@@ -496,6 +496,8 @@ with tab5:
             else:
                 st.markdown(f"### Thesis Proposal: {prop['paper_title']}")
                 st.markdown(f'<div class="card" style="line-height:1.8;">{prop["proposal"]}</div>', unsafe_allow_html=True)
+    else:
+        st.info("Summarize a paper first!")
 
 # ─── TAB 6: Settings & Deploy ───
 with tab6:
@@ -531,8 +533,6 @@ with tab6:
         <p><strong>Author:</strong> HarisAhmed83</p>
     </div>
     """, unsafe_allow_html=True)
-    else:
-        st.info("📄 Summarize a paper first!")
 
 # Load history on start
 if not st.session_state.history:
