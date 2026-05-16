@@ -122,14 +122,23 @@ def api_summarize_url(url: str, lang: str, stype: str) -> dict:
     except Exception as e:
         return {"error": f"Connection failed: {str(e)}"}
 
-def api_history():
+@st.cache_data(ttl=30, show_spinner=False)
+def _cached_history():
     try:
         r = requests.get(f"{API_URL}/history", timeout=10)
-        if r.status_code == 200: st.session_state.history = r.json()
-    except: pass
+        return r.json() if r.status_code == 200 else []
+    except: return []
+
+def api_history():
+    data = _cached_history()
+    if data is not None:
+        st.session_state.history = data
 
 def api_delete(sid: str):
-    try: requests.delete(f"{API_URL}/history/{sid}", timeout=5); api_history()
+    try:
+        requests.delete(f"{API_URL}/summary/{sid}", timeout=5)
+        _cached_history.clear()
+        api_history()
     except: pass
 
 def api_get(sid: str):
@@ -262,7 +271,8 @@ with tab1:
                     st.error(f"❌ {result['error']}")
                 else:
                     st.session_state.current = result
-                    st.success("✅ Summary generated!")
+                    st.success("Done!")
+                    _cached_history.clear()
                     api_history()
                     st.rerun()
     else:
@@ -276,14 +286,15 @@ with tab1:
             </div>""", unsafe_allow_html=True)
 
             if st.button("🚀 Fetch & Summarize", type="primary", use_container_width=True):
-                with st.spinner("🌐 Fetching URL..."):
+                with st.spinner("Fetching URL..."):
                     result = api_summarize_url(url, lang, stype)
 
                 if "error" in result:
-                    st.error(f"❌ {result['error']}")
+                    st.error(f"{result['error']}")
                 else:
                     st.session_state.current = result
-                    st.success("✅ Summary generated!")
+                    st.success("Done!")
+                    _cached_history.clear()
                     api_history()
                     st.rerun()
 
