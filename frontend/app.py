@@ -1,189 +1,157 @@
 """
-ScholarAI — PhD Research Assistant
-Professional Streamlit UI
+AI Research Paper Summarizer Pro v3.0
+Professional Streamlit Frontend with Dark/Light Mode
 """
 
 import os, json, requests, streamlit as st
 
 API_URL = os.environ.get("API_URL", "http://localhost:8001")
 
-st.set_page_config(page_title="ScholarAI", page_icon="", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="AI Paper Summarizer Pro",
+    page_icon="📄",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-for k, v in {"current": None, "history": [], "theme": "dark"}.items():
-    if k not in st.session_state: st.session_state[k] = v
+# ─── Session State ───
+defaults = {
+    "current": None, "history": [], "dark_mode": False, "page": "summarize",
+    "editing_title": "", "editing_summary": "",
+}
+for k, v in defaults.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
-THEME = st.session_state.theme
-IS_DARK = THEME == "dark"
-
-# ─── Professional Design System CSS ───
-DARK_VARS = """
-    --bg: #0a0b0e;
-    --bg-card: #141518;
-    --bg-sidebar: #0d0e11;
-    --bg-elevated: #1a1b1e;
-    --text: #e8e8ed;
-    --text-secondary: #8e8e93;
-    --text-muted: #636366;
-    --border: rgba(255,255,255,0.06);
-    --border-light: rgba(255,255,255,0.08);
-    --accent: #5e5ce6;
-    --accent-hover: #4b49d4;
-    --accent-soft: rgba(94,92,230,0.12);
-    --accent-glow: rgba(94,92,230,0.15);
-    --success: #34c759;
-    --warning: #ff9f0a;
-    --danger: #ff453a;
-    --radius: 10px;
-    --radius-sm: 6px;
-    --radius-lg: 14px;
-    --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
-    --shadow-lg: 0 8px 32px rgba(0,0,0,0.4);
-"""
-LIGHT_VARS = """
-    --bg: #f5f5f7;
-    --bg-card: #ffffff;
-    --bg-sidebar: #ffffff;
-    --bg-elevated: #fafafa;
-    --text: #1d1d1f;
-    --text-secondary: #86868b;
-    --text-muted: #aeaeb2;
-    --border: rgba(0,0,0,0.06);
-    --border-light: rgba(0,0,0,0.08);
-    --accent: #5e5ce6;
-    --accent-hover: #4b49d4;
-    --accent-soft: rgba(94,92,230,0.08);
-    --accent-glow: rgba(94,92,230,0.1);
-    --success: #34c759;
-    --warning: #ff9f0a;
-    --danger: #ff453a;
-    --radius: 10px;
-    --radius-sm: 6px;
-    --radius-lg: 14px;
-    --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
-    --shadow-lg: 0 8px 32px rgba(0,0,0,0.06);
-"""
-
-CSS = """
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-:root { THEME_VARS }
-
-* { font-family: 'Inter', -apple-system, sans-serif; box-sizing: border-box; }
-body, .stApp { background: var(--bg); color: var(--text); }
-
-#MainMenu, header[data-testid="stHeader"], div[data-testid="stToolbar"], .stAppDeployButton,
-.st-emotion-cache-1aezhbc, .st-emotion-cache-1t41k4p { display: none !important; }
-section[data-testid="stSidebar"] > div { padding: 0 !important; }
-.st-emotion-cache-1dp5vir, .st-emotion-cache-1gv3huu { display: none !important; }
-
-.block-container { max-width: 100% !important; padding: 0 !important; }
-.main .block-container { padding: 0 !important; }
-
-.app-layout { display: flex; min-height: 100vh; }
-.sidebar { width: 240px; min-width: 240px; background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 0; position: fixed; top: 0; left: 0; height: 100vh; z-index: 100; }
-.main-area { flex: 1; margin-left: 240px; min-height: 100vh; }
-
-.sb-brand { padding: 24px 20px 16px; }
-.sb-brand h1 { font-size: 18px; font-weight: 700; color: var(--text); margin: 0; letter-spacing: -0.3px; }
-.sb-brand p { font-size: 11px; color: var(--text-muted); margin: 2px 0 0; }
-.sb-btn { margin: 4px 14px 16px; }
-.sb-btn button { background: var(--accent) !important; color: white !important; border: none !important; border-radius: var(--radius) !important; padding: 10px 16px !important; font-size: 13px !important; font-weight: 500 !important; display: flex !important; align-items: center !important; justify-content: center !important; gap: 8px !important; width: 100% !important; box-shadow: 0 2px 12px rgba(94,92,230,0.3) !important; }
-.sb-btn button:hover { background: var(--accent-hover) !important; }
-.sb-nav { padding: 0 10px; flex: 1; }
-.sb-nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; color: var(--text-muted); cursor: pointer; transition: all 0.15s; margin: 1px 0; position: relative; }
-.sb-nav-item:hover { color: var(--text); background: var(--accent-soft); }
-.sb-nav-item.active { color: var(--text); background: var(--accent-soft); }
-.sb-nav-item.active::before { content: ''; position: absolute; left: -10px; top: 50%; transform: translateY(-50%); width: 3px; height: 20px; background: var(--accent); border-radius: 2px; }
-.sb-nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
-.sb-user { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
-.sb-avatar { width: 32px; height: 32px; border-radius: 8px; background: var(--accent-soft); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: var(--accent); flex-shrink: 0; }
-.sb-user-info p { margin: 0; line-height: 1.3; }
-.sb-user-info .name { font-size: 13px; font-weight: 500; color: var(--text); }
-.sb-user-info .plan { font-size: 11px; color: var(--text-muted); }
-
-.topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 32px; background: var(--bg-card); border-bottom: 1px solid var(--border); }
-.topbar h2 { font-size: 15px; font-weight: 600; color: var(--text); margin: 0; display: flex; align-items: center; gap: 10px; }
-.topbar .badge { font-size: 10px; font-weight: 500; color: var(--text-muted); background: var(--bg-elevated); padding: 2px 10px; border-radius: 20px; border: 1px solid var(--border); }
-.topbar-right { display: flex; align-items: center; gap: 8px; }
-.tb-btn { width: 34px; height: 34px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: transparent; color: var(--text-secondary); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s; }
-.tb-btn:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
-
-.content { padding: 28px 32px; }
-.hero { margin-bottom: 28px; }
-.hero h1 { font-size: 26px; font-weight: 700; color: var(--text); margin: 0; letter-spacing: -0.5px; }
-.hero p { font-size: 14px; color: var(--text-secondary); margin: 6px 0 0; max-width: 520px; line-height: 1.5; }
-
-.upload-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 32px; display: flex; gap: 32px; margin-bottom: 32px; }
-.upload-left { flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 12px 0; }
-.upload-icon { width: 48px; height: 48px; border-radius: 50%; background: var(--accent-soft); display: flex; align-items: center; justify-content: center; margin-bottom: 12px; color: var(--accent); }
-.upload-left h3 { font-size: 15px; font-weight: 600; color: var(--text); margin: 0 0 4px; }
-.upload-left .sub { font-size: 13px; color: var(--text-secondary); margin: 0 0 20px; }
-.upload-right { width: 200px; min-width: 200px; }
-.upload-right .label { font-size: 10px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; margin: 0 0 8px; }
-.upload-right .group { margin-bottom: 20px; }
-.pill-group { display: flex; gap: 6px; }
-.pill { font-size: 12px; padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border); color: var(--text-secondary); background: var(--bg); cursor: pointer; font-weight: 500; transition: all 0.15s; }
-.pill.active { background: var(--accent); color: white; border-color: var(--accent); }
-.lang-item { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; margin: 3px 0; background: var(--bg); }
-.lang-item:hover { border-color: var(--accent); }
-.lang-item.active { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
-.lang-item .check { margin-left: auto; color: var(--accent); font-size: 12px; }
-
-.section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.section-head h2 { font-size: 16px; font-weight: 600; color: var(--text); margin: 0; }
-.section-head a { font-size: 13px; color: var(--accent); cursor: pointer; font-weight: 500; }
-.card-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-.pcard { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; transition: all 0.2s; }
-.pcard:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
-.pcard .thumb { height: 100px; position: relative; }
-.pcard .cat { position: absolute; top: 10px; right: 10px; font-size: 10px; font-weight: 600; padding: 2px 10px; border-radius: 8px; }
-.pcard .body { padding: 14px 16px; }
-.pcard .body h4 { font-size: 13px; font-weight: 600; color: var(--text); margin: 0 0 8px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pcard .body .meta { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
-
-.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; margin: 12px 0; }
-.badge-tag { padding: 2px 10px; border-radius: 6px; font-size: 11px; font-weight: 500; display: inline-block; margin-right: 4px; background: var(--accent-soft); color: var(--accent); }
-.point { padding: 10px 14px; border-radius: var(--radius-sm); margin: 6px 0; border-left: 3px solid var(--accent); font-size: 14px; line-height: 1.6; background: var(--bg-elevated); }
-.meta-text { font-size: 13px; color: var(--text-secondary); }
-.diff-badge { padding: 2px 10px; border-radius: 5px; font-size: 11px; font-weight: 600; display: inline-block; }
-.diff-easy { background: rgba(52,199,89,0.15); color: var(--success); }
-.diff-medium { background: rgba(255,159,10,0.15); color: var(--warning); }
-.diff-hard { background: rgba(255,69,58,0.15); color: var(--danger); }
-
-.stButton button { border-radius: var(--radius-sm) !important; font-size: 13px !important; font-weight: 500 !important; padding: 8px 18px !important; border: none !important; background: var(--accent) !important; color: white !important; transition: all 0.15s !important; }
-.stButton button:hover { background: var(--accent-hover) !important; }
-.stButton button[kind="secondary"] { background: transparent !important; border: 1px solid var(--border) !important; color: var(--text) !important; }
-.stTextInput input, .stSelectbox > div > div { border-radius: var(--radius-sm) !important; font-size: 13px !important; border: 1px solid var(--border) !important; background: var(--bg) !important; color: var(--text) !important; }
-.stTextInput input:focus { border-color: var(--accent) !important; }
-div[data-testid="stFileUploader"] { border: 1.5px dashed var(--border) !important; border-radius: var(--radius-sm) !important; background: var(--bg) !important; padding: 12px !important; }
-.stRadio > div { gap: 4px !important; }
-.stRadio > div label { border-radius: var(--radius-sm) !important; padding: 6px 14px !important; font-size: 13px !important; border: 1px solid var(--border) !important; background: var(--bg) !important; color: var(--text-secondary) !important; }
-.stRadio > div label[aria-checked="true"] { background: var(--accent-soft) !important; color: var(--text) !important; border-color: var(--accent) !important; }
-.stTabs [data-baseweb="tab-list"] { gap: 2px; border-radius: var(--radius); padding: 3px; background: var(--bg); border: 1px solid var(--border); }
-.stTabs [data-baseweb="tab"] { border-radius: var(--radius-sm); padding: 5px 14px; font-weight: 500; font-size: 12px; color: var(--text-muted); }
-.stTabs [data-baseweb="tab"][aria-selected="true"] { background: var(--bg-card); color: var(--text); }
-.stChatInput { border: 1px solid var(--border) !important; border-radius: var(--radius) !important; }
-.stChatInput input { background: var(--bg) !important; color: var(--text) !important; }
-section[data-testid="stSidebar"] { display: none !important; }
-.st-emotion-cache-1jicfl2 { display: none !important; }
-</style>"""
-
-CSS = CSS.replace("THEME_VARS", DARK_VARS if IS_DARK else LIGHT_VARS)
-
-st.markdown(CSS, unsafe_allow_html=True)
+# ─── Theme ───
+def theme_css(dark: bool):
+    base = """
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        @keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+        * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+        .card { animation: fadeIn 0.4s ease; border-radius: 16px; padding: 28px; margin: 16px 0; transition: all 0.3s ease; }
+        .card:hover { transform: translateY(-2px); }
+        .header { animation: fadeIn 0.5s ease; padding: 36px 40px; border-radius: 20px; margin-bottom: 28px; }
+        .header h1 { margin:0; font-size:36px; font-weight: 800; letter-spacing: -0.5px; }
+        .header p { font-size:15px; font-weight: 400; margin-top: 6px; opacity: 0.85; }
+        .point { padding: 14px 18px; border-radius: 12px; margin: 8px 0; border-left: 4px solid; font-size: 14px; line-height: 1.6; transition: all 0.2s; }
+        .point:hover { transform: translateX(4px); }
+        .badge { padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; margin-right: 6px; display: inline-block; }
+        .meta { font-size: 13px; opacity: 0.7; }
+        .urdu { direction: rtl; text-align: right; font-size: 20px; line-height: 2; }
+        .history-item { padding: 14px; border-radius: 12px; margin: 6px 0; transition: all 0.2s; }
+        div[data-testid="stFileUploader"] { border-radius: 16px; padding: 28px; transition: all 0.3s; }
+        .stButton > button { border-radius: 12px; padding: 12px 28px; font-weight: 600; font-size: 15px; border: none; transition: all 0.25s ease; }
+        .stButton > button:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
+        .stTextInput > div > input { border-radius: 12px; padding: 12px 16px; font-size: 14px; }
+        .stSelectbox > div > div { border-radius: 12px; }
+        .stTabs [data-baseweb="tab-list"] { gap: 8px; border-radius: 14px; padding: 4px; }
+        .stTabs [data-baseweb="tab"] { border-radius: 10px; padding: 8px 20px; font-weight: 500; }
+        .sidebar-section { margin-bottom: 28px; }
+        .sidebar-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; margin-bottom: 8px; }
+        .section-heading { font-size: 18px; font-weight: 700; margin: 24px 0 12px; display: flex; align-items: center; gap: 8px; }
+        .section-heading .icon { font-size: 20px; }
+        .finding-item { padding: 14px 18px; border-radius: 12px; margin: 8px 0; display: flex; gap: 12px; font-size: 14px; line-height: 1.6; align-items: flex-start; }
+        .finding-item .num { font-weight: 700; min-width: 24px; font-size: 13px; }
+        .gap-item { padding: 12px 16px; border-radius: 10px; margin: 6px 0; font-size: 14px; line-height: 1.5; border-left: 3px solid; transition: all 0.2s; }
+        .gap-item:hover { transform: translateX(3px); }
+        .term-item { padding: 10px 16px; border-radius: 10px; margin: 5px 0; font-size: 13px; line-height: 1.5; }
+        .term-item strong { font-weight: 600; }
+        .research-section { padding: 24px; border-radius: 14px; margin: 12px 0; }
+        .chat-msg { padding: 14px 18px; border-radius: 14px; margin: 8px 0; max-width: 85%; font-size: 14px; line-height: 1.6; }
+        .diff-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+    </style>"""
+    if dark:
+        return base + """
+        <style>
+            .main, .stApp { background: #0b0e14; color: #cdd6f4; }
+            .card { background: rgba(30, 34, 48, 0.85); border: 1px solid rgba(137, 180, 250, 0.08); box-shadow: 0 4px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.03); }
+            .card:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.35); border-color: rgba(137, 180, 250, 0.2); }
+            .card h2, .card h3, .card p { color: #cdd6f4 !important; }
+            .header { background: linear-gradient(135deg, #11141f, #1a1f35); border: 1px solid rgba(137, 180, 250, 0.12); }
+            .header h1 { color: #89b4fa !important; }
+            .header p { color: #9399b2 !important; }
+            .point { background: rgba(30, 34, 48, 0.6); border-left-color: #89b4fa; color: #cdd6f4; }
+            .badge { background: rgba(137, 180, 250, 0.12); color: #89b4fa; }
+            .meta { color: #6c7086 !important; }
+            .urdu { color: #cdd6f4; }
+            .history-item { background: rgba(30, 34, 48, 0.6); border: 1px solid rgba(137, 180, 250, 0.06); }
+            .history-item:hover { border-color: #89b4fa; background: rgba(137, 180, 250, 0.06); }
+            div[data-testid="stFileUploader"] { border: 2px dashed rgba(137, 180, 250, 0.25); background: rgba(30, 34, 48, 0.5); }
+            .stButton > button { background: linear-gradient(135deg, #89b4fa, #b4d0ff); color: #0b0e14 !important; }
+            .stButton > button:hover { background: linear-gradient(135deg, #9dc2ff, #c8ddff); }
+            .stTextInput > div > input { background: rgba(30, 34, 48, 0.8); border: 1px solid rgba(137, 180, 250, 0.12); color: #cdd6f4; }
+            .stSelectbox > div > div { background: rgba(30, 34, 48, 0.8); border: 1px solid rgba(137, 180, 250, 0.12); color: #cdd6f4; }
+            .stRadio > div { color: #cdd6f4; }
+            .stTabs [data-baseweb="tab-list"] { background: rgba(30, 34, 48, 0.6); }
+            .stTabs [data-baseweb="tab"] { color: #6c7086; }
+            .stTabs [data-baseweb="tab"][aria-selected="true"] { background: rgba(137, 180, 250, 0.15); color: #89b4fa; }
+            .sidebar-section h3 { color: #89b4fa !important; }
+            .finding-item { background: rgba(30, 34, 48, 0.5); }
+            .finding-item .num { color: #89b4fa; }
+            .gap-item { background: rgba(30, 34, 48, 0.4); border-left-color: #f9e2af; }
+            .gap-item:hover { background: rgba(249, 226, 175, 0.08); }
+            .term-item { background: rgba(30, 34, 48, 0.4); }
+            .term-item strong { color: #a6e3a1; }
+            .research-section { background: rgba(30, 34, 48, 0.4); border: 1px solid rgba(137, 180, 250, 0.06); }
+            .chat-msg { background: rgba(30, 34, 48, 0.6); }
+            hr { border-color: rgba(137, 180, 250, 0.1); }
+            code { background: rgba(137, 180, 250, 0.1); color: #89b4fa; padding: 2px 8px; border-radius: 6px; font-size: 13px; }
+        </style>"""
+    else:
+        return base + """
+        <style>
+            .main, .stApp { background: #f0f2f5; color: #1e1e2e; }
+            .card { background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(0,0,0,0.06); backdrop-filter: blur(8px); box-shadow: 0 2px 16px rgba(0,0,0,0.04); }
+            .card:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.08); border-color: rgba(37, 99, 235, 0.15); }
+            .card h2, .card h3, .card p { color: #1e1e2e !important; }
+            .header { background: linear-gradient(135deg, #2563eb, #6366f1, #7c3aed); }
+            .header h1 { color: white !important; }
+            .header p { color: rgba(255,255,255,0.85) !important; }
+            .point { background: rgba(37, 99, 235, 0.06); border-left-color: #2563eb; }
+            .badge { background: rgba(37, 99, 235, 0.08); color: #2563eb; }
+            .meta { color: #64748b !important; }
+            .history-item { background: rgba(255,255,255,0.7); border: 1px solid rgba(0,0,0,0.04); }
+            .history-item:hover { border-color: #2563eb; background: rgba(37, 99, 235, 0.03); }
+            div[data-testid="stFileUploader"] { border: 2px dashed rgba(37, 99, 235, 0.2); background: rgba(255,255,255,0.6); }
+            .stButton > button { background: linear-gradient(135deg, #2563eb, #6366f1); color: white !important; }
+            .stButton > button:hover { background: linear-gradient(135deg, #3b82f6, #818cf8); }
+            .stTextInput > div > input { background: rgba(255,255,255,0.8); border: 1px solid rgba(0,0,0,0.08); color: #1e1e2e; }
+            .stSelectbox > div > div { background: rgba(255,255,255,0.8); border: 1px solid rgba(0,0,0,0.08); color: #1e1e2e; }
+            .stTabs [data-baseweb="tab-list"] { background: rgba(255,255,255,0.6); }
+            .stTabs [data-baseweb="tab"] { color: #64748b; }
+            .stTabs [data-baseweb="tab"][aria-selected="true"] { background: rgba(37, 99, 235, 0.08); color: #2563eb; }
+            .sidebar-section h3 { color: #2563eb !important; }
+            .finding-item { background: rgba(37, 99, 235, 0.04); }
+            .finding-item .num { color: #2563eb; }
+            .gap-item { background: rgba(245, 158, 11, 0.06); border-left-color: #f59e0b; }
+            .gap-item:hover { background: rgba(245, 158, 11, 0.1); }
+            .term-item { background: rgba(16, 185, 129, 0.06); }
+            .term-item strong { color: #059669; }
+            .research-section { background: rgba(255,255,255,0.6); border: 1px solid rgba(0,0,0,0.04); }
+            .chat-msg { background: rgba(255,255,255,0.7); border: 1px solid rgba(0,0,0,0.06); }
+            hr { border-color: rgba(0,0,0,0.06); }
+            code { background: rgba(37, 99, 235, 0.06); color: #2563eb; padding: 2px 8px; border-radius: 6px; font-size: 13px; }
+        </style>"""
 
 # ─── API ───
-def api_summarize(file, lang, stype):
+def api_summarize(file, lang: str, stype: str) -> dict:
     try:
         r = requests.post(f"{API_URL}/summarize", files={"file": (file.name, file, "application/pdf")}, data={"language": lang, "summary_type": stype}, timeout=180)
         return r.json() if r.status_code == 200 else {"error": r.json().get("detail", f"HTTP {r.status_code}")}
-    except: return {"error": f"Connection failed"}
+    except Exception as e:
+        return {"error": f"Connection failed: {str(e)}"}
 
-def api_summarize_url(url, lang, stype):
+def api_summarize_url(url: str, lang: str, stype: str) -> dict:
     try:
         r = requests.post(f"{API_URL}/summarize-url", json={"url": url, "language": lang, "summary_type": stype}, timeout=180)
         return r.json() if r.status_code == 200 else {"error": r.json().get("detail", f"HTTP {r.status_code}")}
-    except: return {"error": "Connection failed"}
+    except Exception as e:
+        return {"error": f"Connection failed: {str(e)}"}
+
+def api_history():
+    st.session_state.history = _cached_history()
 
 @st.cache_data(ttl=30, show_spinner=False)
 def _cached_history():
@@ -192,326 +160,394 @@ def _cached_history():
         return r.json() if r.status_code == 200 else []
     except: return []
 
-def api_history():
-    d = _cached_history()
-    if d is not None: st.session_state.history = d
-
-def api_delete(sid):
+def api_delete(sid: str):
     try: requests.delete(f"{API_URL}/summary/{sid}", timeout=5); _cached_history.clear(); api_history()
     except: pass
 
-def api_get(sid):
+def api_get(sid: str):
     try:
         r = requests.get(f"{API_URL}/summary/{sid}", timeout=10)
         return r.json() if r.status_code == 200 else None
     except: return None
 
-def _src_link(s):
+def _src_link(s: dict) -> str:
     url = s.get("source_url", "")
-    return f'<p class="meta-text">Source: <a href="{url}" target="_blank" style="color:var(--accent)">{url[:80]}</a></p>'
+    return f'<p class="meta">🔗 Source: <a href="{url}" target="_blank">{url[:80]}</a></p>'
 
-def api_export(sid, fmt="txt"):
+def api_export(sid: str, fmt: str = "txt"):
     try:
         r = requests.get(f"{API_URL}/export/{sid}?fmt={fmt}", timeout=30)
         return r.text if r.status_code == 200 else None
     except: return None
 
-def api_ask(sid, question):
+def api_ask(sid: str, question: str) -> str:
     try:
         r = requests.post(f"{API_URL}/ask/{sid}", json={"question": question}, timeout=60)
-        return r.json().get("answer", "Error") if r.status_code == 200 else f"Error"
-    except: return "Connection failed"
+        return r.json().get("answer", "Error: Could not get answer") if r.status_code == 200 else f"Error: {r.json().get('detail', r.status_code)}"
+    except Exception as e:
+        return f"Connection failed: {e}"
 
-def api_compare(sid1, sid2):
+def api_compare(sid1: str, sid2: str) -> dict:
     try:
         r = requests.post(f"{API_URL}/compare", json={"sid1": sid1, "sid2": sid2}, timeout=120)
         return r.json() if r.status_code == 200 else {"error": r.json().get("detail", f"HTTP {r.status_code}")}
-    except: return {"error": "Connection failed"}
+    except Exception as e:
+        return {"error": f"Connection failed: {e}"}
 
-# ─── ScholarAI Custom Layout ───
+# ─── Render ───
+dark = st.session_state.dark_mode
+st.markdown(theme_css(dark), unsafe_allow_html=True)
 
-# Sidebar (Streamlit native sidebar hidden, we render custom HTML)
-st.markdown('<div class="app-layout"><div class="sidebar">', unsafe_allow_html=True)
-st.markdown("""
-<div class="sb-brand">
-    <h1>ScholarAI</h1>
-    <p>PhD Research Assistant</p>
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown('<div class="sb-btn">', unsafe_allow_html=True)
-if st.button("+ New Summary", key="new_summary_btn", use_container_width=True):
-    st.session_state.current = None
-    st.rerun()
-st.markdown('</div>', unsafe_allow_html=True)
-
-st.markdown('<div class="sb-nav">', unsafe_allow_html=True)
-nav_items = [
-    ("upload", "Upload", "M12 3v13M5 10l7-7 7 7M5 21h14"),
-    ("history", "History", "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"),
-    ("settings", "Settings", "M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15c.3.2.5.6.4 1l-.6 1.7c-.2.5-.7.8-1.2.8h-2.7c-.2.5-.5 1-.8 1.4l1.4 1.4c.3.3.3.8 0 1.1l-1.4 1.4c-.3.3-.8.3-1.1 0l-1.4-1.4c-.4.3-.9.6-1.4.8v2.7c0 .5-.3 1-.8 1.2l-1.7.6c-.4.1-.8 0-1-.4L12 19.4c-.5.2-1 .2-1.5 0l-1.1 1.6c-.3.4-.7.5-1.1.4l-1.7-.6c-.5-.2-.8-.7-.8-1.2v-2.7c-.5-.2-1-.5-1.4-.8l-1.4 1.4c-.3.3-.8.3-1.1 0l-1.4-1.4c-.3-.3-.3-.8 0-1.1l1.4-1.4c-.3-.4-.6-.9-.8-1.4H4.8c-.5 0-1-.3-1.2-.8l-.6-1.7c-.1-.4 0-.8.4-1l1.6-1.1c-.2-.5-.2-1 0-1.5l-1.6-1.1c-.4-.2-.5-.6-.4-1l.6-1.7c.2-.5.7-.8 1.2-.8h2.7c.2-.5.5-1 .8-1.4L7.1 5.9c-.3-.3-.3-.8 0-1.1l1.4-1.4c.3-.3.8-.3 1.1 0l1.4 1.4c.4-.3.9-.6 1.4-.8V1.3c0-.5.3-1 .8-1.2l1.7-.6c.4-.1.8 0 1 .4l1.1 1.6c.5-.2 1-.2 1.5 0l1.1-1.6c.3-.4.7-.5 1.1-.4l1.7.6c.5.2.8.7.8 1.2v2.7c.5.2 1 .5 1.4.8l1.4-1.4c.3-.3.8-.3 1.1 0l1.4 1.4c.3.3.3.8 0 1.1l-1.4 1.4c.3.4.6.9.8 1.4h2.7c.5 0 1 .3 1.2.8l.6 1.7c.1.4 0 .8-.4 1l-1.6 1.1c.2.5.2 1 0 1.5l1.6 1.1z"),
-]
-for key, label, path in nav_items:
-    active = "active" if key == "upload" else ""
-    st.markdown(f'<div class="sb-nav-item {active}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="{path}"/></svg>{label}</div>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
-
-st.markdown("""
-<div class="sb-user">
-    <div class="sb-avatar">AT</div>
-    <div class="sb-user-info">
-        <p class="name">Dr. Aris Thorne</p>
-        <p class="plan">Premium Plan</p>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown('</div><div class="main-area">', unsafe_allow_html=True)
-
-# ─── Top Bar ───
+# ─── Header ───
+mode_icon = "🌙" if not dark else "☀️"
 st.markdown(f"""
-<div class="topbar">
-    <h2>Synthesis Dashboard <span class="badge">v2.4</span></h2>
-    <div class="topbar-right">
-        <button class="tb-btn" onclick="alert('Theme toggle would go here')">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
-        </button>
-        <button class="tb-btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-        </button>
-        <button class="tb-btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        </button>
+<div class="header" style="display:flex; justify-content:space-between; align-items:center;">
+    <div>
+        <h1>📄 AI Paper Summarizer</h1>
+        <p>MPhil/PhD Research Assistant — Extract methodology, findings, gaps & more — English & Urdu</p>
+    </div>
+    <div style="text-align:right; display:flex; gap:10px; align-items:center;">
+        <span style="font-size:12px; opacity:0.6; background:rgba(255,255,255,0.08); padding:4px 14px; border-radius:20px;">v3.0</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="content">', unsafe_allow_html=True)
+# ─── Sidebar ───
+with st.sidebar:
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
 
-# ─── Hero ───
-st.markdown("""
-<div class="hero">
-    <h1>Synthesis Dashboard</h1>
-    <p>Distill complex academic literature into actionable insights with multi-lingual support and precision AI analysis.</p>
-</div>
-""", unsafe_allow_html=True)
+    # Theme toggle
+    if st.button(f"{mode_icon} {'Light Mode' if dark else 'Dark Mode'}", use_container_width=True):
+        st.session_state.dark_mode = not dark
+        st.rerun()
 
-# ─── Controls ───
-lang = st.selectbox("_lang", ["english", "urdu", "both"],
-    format_func=lambda x: {"english":"English","urdu":"Urdu","both":"Dual (Eng + Urdu)"}[x],
-    label_visibility="collapsed")
-stype = st.selectbox("_stype", ["detailed", "brief", "bullet"],
-    format_func=lambda x: {"detailed":"Full Detail","brief":"Quick Overview","bullet":"Key Points Only"}[x],
-    label_visibility="collapsed")
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown("### 🌐 Language / زبان")
 
-# ─── Upload Panel ───
-arxiv_url = st.session_state.pop("arxiv_url_to_summarize", None)
+    lang = st.radio("lang", ["english", "urdu", "both"],
+        format_func=lambda x: {"english": "🇬🇧 English", "urdu": "🇵🇰 Urdu (اردو)", "both": "🌐 Both"}[x],
+        label_visibility="collapsed", index=0)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown(f"""
-<div class="upload-card">
-    <div class="upload-left">
-        <div class="upload-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
-        <h3>Upload Academic Document</h3>
-        <p class="sub">Drag and drop PDF, TXT or paste a research DOI/URL</p>
-        <div style="{{display:flex;gap:8px;}}"></div>
-    </div>
-    <div class="upload-right">
-        <div class="group">
-            <p class="label">Summary Depth</p>
-            <div class="pill-group">
-                <span class="pill {'active' if stype=='bullet' else ''}">Key Points</span>
-                <span class="pill {'active' if stype=='detailed' else ''}">Full Detail</span>
-            </div>
-        </div>
-        <div class="group">
-            <p class="label">Language Output</p>
-            <div class="lang-item {'active' if lang=='english' else ''}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
-                English <span class="check">{'✓' if lang=='english' else ''}</span>
-            </div>
-            <div class="lang-item {'active' if lang=='urdu' else ''}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
-                Urdu <span class="check">{'✓' if lang=='urdu' else ''}</span>
-            </div>
-            <div class="lang-item {'active' if lang=='both' else ''}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
-                Dual (Eng + Urdu) <span class="check">{'✓' if lang=='both' else ''}</span>
-            </div>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown("### 📋 Summary Type")
+    stype = st.radio("type", ["detailed", "brief", "bullet"],
+        format_func=lambda x: {"detailed": "🔍 In-Depth Research", "brief": "📝 Quick Overview", "bullet": "• Key Points Only"}[x],
+        label_visibility="collapsed", index=0)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-uploaded = st.file_uploader("file", type=["pdf", "txt"], label_visibility="collapsed")
-url = st.text_input("url_input", value=arxiv_url or "", placeholder="Paste research URL (e.g. https://arxiv.org/abs/...)")
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown("### 📂 History")
+    if st.button("🔄 Refresh", use_container_width=True): api_history()
 
-if uploaded:
-    size = uploaded.size / 1024
-    sz = f"{size:.0f}KB" if size < 1024 else f"{size/1024:.1f}MB"
-    ext = "PDF" if uploaded.name.endswith(".pdf") else "TXT"
-    st.markdown(f'<div class="card" style="padding:14px 20px;display:flex;align-items:center;gap:12px;"><strong>{uploaded.name}</strong><span class="badge-tag">{ext}</span><span class="badge-tag">{sz}</span></div>', unsafe_allow_html=True)
-    if st.button("Generate Summary", type="primary"):
-        with st.spinner("AI is analyzing the paper..."):
-            result = api_summarize(uploaded, lang, stype)
-        if "error" in result: st.error(result["error"])
-        else: st.session_state.current = result; st.session_state.pop("chat_history", None); _cached_history.clear(); api_history(); st.rerun()
-elif url:
-    if arxiv_url and not st.session_state.get("arxiv_auto"):
-        st.session_state.arxiv_auto = True
-        with st.spinner("Fetching URL..."):
-            result = api_summarize_url(arxiv_url, lang, stype)
-        if "error" in result: st.error(result["error"])
-        else: st.session_state.current = result; st.session_state.pop("chat_history", None); _cached_history.clear(); api_history(); st.rerun()
+    for item in st.session_state.history[:15]:
+        flag = {"english":"🇬🇧","urdu":"🇵🇰","both":"🌐"}.get(item["language"], "🌐")
+        size = f"{item['filesize']/1024:.0f}KB" if item['filesize'] < 1024*1024 else f"{item['filesize']/(1024*1024):.1f}MB"
+        label = item['title'][:25]
+        if item.get('source_url'):
+            label = "🔗 " + label
+        cols = st.columns([3, 1, 1])
+        with cols[0]:
+            st.markdown(f"""<div class="history-item">
+                <small>{flag} <strong>{label}</strong></small><br>
+                <small class="meta">{item['filetype']} · {size} · {item['created_at'][:10]}</small>
+            </div>""", unsafe_allow_html=True)
+        with cols[1]:
+            if st.button("📂", key=f"l_{item['id']}"):
+                s = api_get(item['id'])
+                if s: st.session_state.current = s; st.rerun()
+                else: st.toast("Failed to load summary")
+        with cols[2]:
+            if st.button("🗑", key=f"d_{item['id']}"):
+                api_delete(item['id']); st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ─── Main Tabs ───
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📤 Upload & Summarize", "📖 View Summary", "📊 Compare Papers", "📚 ArXiv Search", "📝 Thesis Proposal"])
+
+# ─── TAB 1 ───
+with tab1:
+    input_mode = st.radio("Input Mode", ["📄 File Upload", "🔗 URL"], horizontal=True, label_visibility="collapsed")
+
+    if input_mode == "📄 File Upload":
+        st.markdown("### Upload Document")
+        uploaded = st.file_uploader("Choose PDF or TXT file", type=["pdf", "txt"], label_visibility="collapsed")
+
+        if uploaded:
+            size = uploaded.size / 1024
+            size_str = f"{size:.1f} KB" if size < 1024 else f"{size/1024:.1f} MB"
+            ext = "PDF" if uploaded.name.endswith(".pdf") else "TXT"
+
+            st.markdown(f"""
+            <div class="card" style="padding:16px;">
+                <strong>📎 {uploaded.name}</strong>
+                <span class="badge">{ext}</span>
+                <span class="badge">{size_str}</span>
+            </div>""", unsafe_allow_html=True)
+
+            if st.button("🚀 Generate Summary", type="primary", use_container_width=True):
+                with st.spinner("🤖 AI is analyzing the paper..."):
+                    result = api_summarize(uploaded, lang, stype)
+
+                if "error" in result:
+                    st.error(f"❌ {result['error']}")
+                else:
+                    st.session_state.current = result
+                    st.success("✅ Summary generated!")
+                    api_history()
+                    st.rerun()
     else:
-        st.markdown(f'<div class="card" style="padding:14px 20px;"><strong>{url[:80]}</strong></div>', unsafe_allow_html=True)
-        if st.button("Fetch & Summarize", type="primary"):
-            with st.spinner("Fetching URL..."):
-                result = api_summarize_url(url, lang, stype)
-            if "error" in result: st.error(result["error"])
-            else: st.session_state.current = result; st.session_state.pop("chat_history", None); _cached_history.clear(); api_history(); st.rerun()
+        st.markdown("### Enter URL")
+        url = st.text_input("Paste research paper / article URL", placeholder="https://example.com/paper", label_visibility="collapsed")
 
-# ─── Recent Syntheses ───
-st.markdown('<div class="section-head"><h2>Recent Syntheses</h2><a>View all</a></div>', unsafe_allow_html=True)
+        if url:
+            st.markdown(f"""
+            <div class="card" style="padding:16px;">
+                <strong>🔗 {url[:80]}{'...' if len(url) > 80 else ''}</strong>
+            </div>""", unsafe_allow_html=True)
 
-cats = [
-    ("#5e5ce6", "rgba(94,92,230,0.3)", "ML/AI"),
-    ("#34c759", "rgba(52,199,89,0.3)", "Quantum"),
-    ("#ff9f0a", "rgba(255,159,10,0.3)", "Bio-Med"),
-]
+            if st.button("🚀 Fetch & Summarize", type="primary", use_container_width=True):
+                with st.spinner("🌐 Fetching URL..."):
+                    result = api_summarize_url(url, lang, stype)
 
-cards = '<div class="card-row">'
-for i, item in enumerate(st.session_state.history[:3]):
-    c = cats[i % 3]
-    cards += f'<div class="pcard"><div class="thumb" style="background:linear-gradient(135deg,{c[0]},{c[1]});"><span class="cat" style="background:{c[0]}22;color:{c[0]}">{c[2]}</span></div><div class="body"><h4>{item.get("title","Untitled")[:80]}</h4><p class="meta">{item.get("created_at","")[:10] or "—"}</p></div></div>'
-if not st.session_state.history:
-    for i in range(3):
-        c = cats[i % 3]
-        cards += f'<div class="pcard"><div class="thumb" style="background:linear-gradient(135deg,{c[0]},{c[1]});"><span class="cat" style="background:{c[0]}22;color:{c[0]}">{c[2]}</span></div><div class="body"><h4>No summaries yet</h4><p class="meta">Upload a paper to begin</p></div></div>'
-cards += '</div>'
-st.markdown(cards, unsafe_allow_html=True)
+                if "error" in result:
+                    st.error(f"❌ {result['error']}")
+                else:
+                    st.session_state.current = result
+                    st.success("✅ Summary generated!")
+                    api_history()
+                    st.rerun()
 
-# ─── show_paper ───
+    st.markdown("""
+    <div class="card" style="background:transparent; border-style:dashed;">
+        <strong>💡 Supported:</strong> PDF, TXT (up to 50MB), URL &nbsp;|&nbsp;
+        <strong>🌐 Languages:</strong> English, Urdu, Both
+    </div>""", unsafe_allow_html=True)
+
+# ─── TAB 2 ───
 def show_paper(s, show_chat=True):
-    ll = {"english":"English","urdu":"Urdu","both":"Both"}
-    tl = {"detailed":"In-Depth","brief":"Quick","bullet":"Key Points"}
-    sz = f"{s.get('filesize',0)/1024:.0f}KB" if s.get('filesize',0)<1024*1024 else f"{s.get('filesize',0)/(1024*1024):.1f}MB"
-    diff = s.get("difficulty_level","Intermediate")
-    dc = {"Beginner":"diff-easy","Intermediate":"diff-medium","Advanced":"diff-hard"}.get(diff,"diff-medium")
-    st.markdown(f'<div class="card"><h2 style="margin:0 0 6px;font-size:20px;">{s.get("title","Untitled")}</h2><p><span class="badge-tag">{ll.get(s.get("language",""),"")}</span><span class="badge-tag">{tl.get(s.get("summary_type",""),"")}</span><span class="badge-tag">{s.get("filetype","N/A")}</span><span class="badge-tag">{sz}</span><span class="badge-tag">{s.get("word_count",0)} words</span><span class="diff-badge {dc}">{diff}</span></p>{_src_link(s) if s.get("source_url") else ""}</div>', unsafe_allow_html=True)
-    st.markdown("<div class='section-head' style='margin-top:20px'><h2>Summary</h2></div>", unsafe_allow_html=True)
-    cls = "urdu" if s.get("language") == "urdu" else ""
-    st.markdown(f'<div class="card {cls}">{s.get("summary","")}</div>', unsafe_allow_html=True)
+    lang_label = {"english":"🇬🇧 English","urdu":"🇵🇰 Urdu","both":"🌐 Both"}
+    type_label = {"detailed":"In-Depth Research","brief":"Quick Overview","bullet":"Key Points Only"}
+    size_str = f"{s['filesize']/1024:.0f}KB" if s['filesize']<1024*1024 else f"{s['filesize']/(1024*1024):.1f}MB"
+    diff = s.get("difficulty_level", "Intermediate")
+    diff_cls = {"Beginner":"diff-easy","Intermediate":"diff-medium","Advanced":"diff-hard"}.get(diff, "diff-medium")
+
+    st.markdown(f"""
+    <div class="card">
+        <h2 style="margin:0 0 4px;">{s['title']}</h2>
+        <p class="meta">
+            <span class="badge">{lang_label.get(s['language'],s['language'])}</span>
+            <span class="badge">{type_label.get(s['summary_type'],s['summary_type'])}</span>
+            <span class="badge">{s['filetype']}</span>
+            <span class="badge">{size_str}</span>
+            <span class="badge">📝 {s['word_count']} words</span>
+            <span class="badge">⚡ {s['processing_time']}s</span>
+            <span class="diff-badge {diff_cls}">{diff}</span>
+        </p>
+        {_src_link(s) if s.get('source_url') else ''}
+    </div>""", unsafe_allow_html=True)
+
+    st.markdown("<div class='section-heading'><span class='icon'>📝</span> Summary</div>", unsafe_allow_html=True)
+    cls = "urdu" if s["language"] == "urdu" else ""
+    st.markdown(f'<div class="card {cls}">{s["summary"]}</div>', unsafe_allow_html=True)
+
     if s.get("key_points"):
-        st.markdown("<div class='section-head'><h2>Key Takeaways</h2></div>", unsafe_allow_html=True)
-        for p in s["key_points"]: st.markdown(f'<div class="point">{p}</div>', unsafe_allow_html=True)
+        st.markdown("<div class='section-heading'><span class='icon'>🎯</span> Key Takeaways</div>", unsafe_allow_html=True)
+        for p in s["key_points"]:
+            st.markdown(f'<div class="point">✦ {p}</div>', unsafe_allow_html=True)
+
     if s.get("methodology"):
-        st.markdown("<div class='section-head'><h2>Methodology</h2></div>", unsafe_allow_html=True)
-        st.markdown(f'<div class="card">{s["methodology"]}</div>', unsafe_allow_html=True)
+        st.markdown("<div class='section-heading'><span class='icon'>🔬</span> Research Methodology</div>", unsafe_allow_html=True)
+        st.markdown(f'<div class="research-section">{s["methodology"]}</div>', unsafe_allow_html=True)
+
     if s.get("key_findings"):
-        st.markdown("<div class='section-head'><h2>Key Findings</h2></div>", unsafe_allow_html=True)
-        for i, f in enumerate(s["key_findings"],1): st.markdown(f'<div class="point" style="border-left-color:var(--success);"><strong>{i}.</strong> {f}</div>', unsafe_allow_html=True)
+        st.markdown("<div class='section-heading'><span class='icon'>📊</span> Key Findings & Results</div>", unsafe_allow_html=True)
+        for i, f in enumerate(s["key_findings"], 1):
+            st.markdown(f'<div class="finding-item"><span class="num">{i}.</span><span>{f}</span></div>', unsafe_allow_html=True)
+
     if s.get("strengths") or s.get("weaknesses"):
-        st.markdown("<div class='section-head'><h2>Critical Analysis</h2></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-heading'><span class='icon'>⚖️</span> Critical Analysis</div>", unsafe_allow_html=True)
         if s.get("strengths"):
-            st.markdown('<p style="font-weight:600;color:var(--success);font-size:14px;">Strengths</p>', unsafe_allow_html=True)
-            for x in s["strengths"]: st.markdown(f'<div class="point" style="border-left-color:var(--success);">{x}</div>', unsafe_allow_html=True)
+            st.markdown("<p style='margin:4px 0;font-weight:600;color:#10b981;'>✅ Strengths</p>", unsafe_allow_html=True)
+            for x in s["strengths"]:
+                st.markdown(f'<div class="point" style="border-left-color:#10b981;">✦ {x}</div>', unsafe_allow_html=True)
         if s.get("weaknesses"):
-            st.markdown('<p style="font-weight:600;color:var(--danger);font-size:14px;margin-top:12px;">Limitations</p>', unsafe_allow_html=True)
-            for x in s["weaknesses"]: st.markdown(f'<div class="point" style="border-left-color:var(--danger);">{x}</div>', unsafe_allow_html=True)
+            st.markdown("<p style='margin:12px 0 4px;font-weight:600;color:#ef4444;'>❌ Weaknesses / Limitations</p>", unsafe_allow_html=True)
+            for x in s["weaknesses"]:
+                st.markdown(f'<div class="point" style="border-left-color:#ef4444;">✦ {x}</div>', unsafe_allow_html=True)
+
     if s.get("research_gaps"):
-        st.markdown("<div class='section-head'><h2>Research Gaps</h2></div>", unsafe_allow_html=True)
-        for g in s["research_gaps"]: st.markdown(f'<div class="point" style="border-left-color:var(--warning);">{g}</div>', unsafe_allow_html=True)
+        st.markdown("<div class='section-heading'><span class='icon'>🔍</span> Research Gaps</div>", unsafe_allow_html=True)
+        for g in s["research_gaps"]:
+            st.markdown(f'<div class="gap-item">⚠ {g}</div>', unsafe_allow_html=True)
+
     if s.get("future_directions"):
-        st.markdown("<div class='section-head'><h2>Future Directions</h2></div>", unsafe_allow_html=True)
-        for f in s["future_directions"]: st.markdown(f'<div class="point" style="border-left-color:var(--accent);">{f}</div>', unsafe_allow_html=True)
+        st.markdown("<div class='section-heading'><span class='icon'>🔮</span> Future Directions</div>", unsafe_allow_html=True)
+        for f in s["future_directions"]:
+            st.markdown(f'<div class="gap-item" style="border-left-color:#89b4fa;">▸ {f}</div>', unsafe_allow_html=True)
+
     if s.get("conclusion"):
-        st.markdown("<div class='section-head'><h2>Conclusion</h2></div>", unsafe_allow_html=True)
-        st.markdown(f'<div class="card">{s["conclusion"]}</div>', unsafe_allow_html=True)
+        st.markdown("<div class='section-heading'><span class='icon'>✅</span> Conclusion & Implications</div>", unsafe_allow_html=True)
+        st.markdown(f'<div class="research-section">{s["conclusion"]}</div>', unsafe_allow_html=True)
+
     if s.get("key_terms"):
-        st.markdown("<div class='section-head'><h2>Key Terminology</h2></div>", unsafe_allow_html=True)
-        for t in s["key_terms"]: st.markdown(f'<div class="point" style="background:transparent;border-left-color:var(--text-muted);font-size:13px;">{t}</div>', unsafe_allow_html=True)
-    cites = s.get("citations",[])
+        st.markdown("<div class='section-heading'><span class='icon'>📖</span> Key Terminology</div>", unsafe_allow_html=True)
+        for t in s["key_terms"]:
+            st.markdown(f'<div class="term-item">▸ {t}</div>', unsafe_allow_html=True)
+
+    cites = s.get("citations", [])
     if cites:
-        st.markdown("<div class='section-head'><h2>References</h2></div>", unsafe_allow_html=True)
-        for i,c in enumerate(cites[:10]): st.markdown(f'<div style="padding:8px 14px;margin:3px 0;border-radius:var(--radius-sm);background:var(--bg-elevated);font-size:13px;">[{i+1}] {c}</div>', unsafe_allow_html=True)
-    wc = len((s.get("summary") or "").split())
-    st.markdown(f'<p class="meta-text" style="margin:12px 0;">Reading time: ~{max(1,round(wc/250))} min ({wc} words) &middot; Complexity: {diff}</p>', unsafe_allow_html=True)
-    st.markdown("<div class='section-head'><h2>Export</h2></div>", unsafe_allow_html=True)
-    c1,c2,c3,c4 = st.columns(4)
+        st.markdown("<div class='section-heading'><span class='icon'>📚</span> References & Citations</div>", unsafe_allow_html=True)
+        for i, c in enumerate(cites[:10]):
+            st.markdown(f'<div class="card" style="padding:10px 16px;margin:4px 0;"><small>[{i+1}] {c}</small></div>', unsafe_allow_html=True)
+
+    # Reading Time + Complexity
+    wc = len((s.get("summary", "") or "").split())
+    read_min = max(1, round(wc / 250))
+    st.markdown(f'<p class="meta">⏱ Reading time: ~{read_min} min ({wc} words) &nbsp;|&nbsp; 📊 Complexity: {diff}</p>', unsafe_allow_html=True)
+
+    st.markdown("<div class='section-heading'><span class='icon'>📥</span> Export</div>", unsafe_allow_html=True)
+    col1, col2, col3, col4 = st.columns(4)
     sid = s["id"]
-    with c1: st.download_button("JSON", json.dumps(s,indent=2,ensure_ascii=False), f"{sid}.json", use_container_width=True)
-    txt = f"# {s.get('title','')}\n\n## Summary\n{s.get('summary','')}\n\n"
-    with c2: st.download_button("TXT", txt, f"{sid}.txt", use_container_width=True)
-    with c3: st.download_button("Markdown", txt, f"{sid}.md", use_container_width=True)
-    with c4:
-        r = api_export(sid)
-        if r: st.download_button("Export", r, f"{sid}.txt", use_container_width=True)
+    with col1:
+        j = json.dumps(s, indent=2, ensure_ascii=False)
+        st.download_button("📋 JSON", j, f"{sid}.json", use_container_width=True)
+    with col2:
+        t = f"# {s['title']}\n\n## Summary\n{s['summary']}\n\n"
+        if s.get("methodology"): t += f"## Methodology\n{s['methodology']}\n\n"
+        if s.get("key_findings"): t += "## Key Findings\n" + "\n".join(f"- {f}" for f in s["key_findings"]) + "\n\n"
+        if s.get("strengths"): t += "## Strengths\n" + "\n".join(f"- {x}" for x in s["strengths"]) + "\n\n"
+        if s.get("weaknesses"): t += "## Weaknesses\n" + "\n".join(f"- {x}" for x in s["weaknesses"]) + "\n\n"
+        if s.get("research_gaps"): t += "## Research Gaps\n" + "\n".join(f"- {g}" for g in s["research_gaps"]) + "\n\n"
+        if s.get("future_directions"): t += "## Future Directions\n" + "\n".join(f"- {f}" for f in s["future_directions"]) + "\n\n"
+        if s.get("conclusion"): t += f"## Conclusion\n{s['conclusion']}\n\n"
+        if s.get("key_terms"): t += "## Key Terms\n" + "\n".join(f"- {t}" for t in s["key_terms"]) + "\n\n"
+        if s.get("key_points"): t += "## Key Takeaways\n" + "\n".join(f"- {p}" for p in s["key_points"]) + "\n\n"
+        st.download_button("📄 TXT", t, f"{sid}.txt", use_container_width=True)
+    with col3:
+        m = f"# {s['title']}\n\n## Summary\n{s['summary']}\n\n"
+        if s.get("methodology"): m += f"## Methodology\n{s['methodology']}\n\n"
+        if s.get("key_findings"): m += "## Key Findings\n" + "\n".join(f"- {f}" for f in s["key_findings"]) + "\n\n"
+        if s.get("strengths"): m += "## Strengths\n" + "\n".join(f"- {x}" for x in s["strengths"]) + "\n\n"
+        if s.get("weaknesses"): m += "## Weaknesses\n" + "\n".join(f"- {x}" for x in s["weaknesses"]) + "\n\n"
+        if s.get("research_gaps"): m += "## Research Gaps\n" + "\n".join(f"- {g}" for g in s["research_gaps"]) + "\n\n"
+        if s.get("future_directions"): m += "## Future Directions\n" + "\n".join(f"- {f}" for f in s["future_directions"]) + "\n\n"
+        if s.get("conclusion"): m += f"## Conclusion\n{s['conclusion']}\n\n"
+        if s.get("key_terms"): m += "## Key Terms\n" + "\n".join(f"- {t}" for t in s["key_terms"]) + "\n\n"
+        if s.get("key_points"): m += "## Key Takeaways\n" + "\n".join(f"- {p}" for p in s["key_points"]) + "\n\n"
+        st.download_button("📝 Markdown", m, f"{sid}.md", use_container_width=True)
+    with col4:
+        resp = api_export(sid)
+        if resp:
+            st.download_button("📥 Export TXT", resp, f"{sid}.txt", use_container_width=True)
+    # PDF export
+    try:
+        from fpdf import FPDF
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.multi_cell(0, 10, s.get("title", "Untitled")[:100])
+        pdf.ln(4)
+        pdf.set_font("Helvetica", "", 11)
+        pdf.multi_cell(0, 6, s.get("summary", "")[:2000])
+        pdf_file = pdf.output(dest="S").encode("latin-1", errors="replace")
+        st.download_button("📕 PDF", pdf_file, f"{sid}.pdf", use_container_width=True)
+    except:
+        pass
+
+    # ─── Ask the Paper (Chat) ───
     if show_chat and s.get("id"):
-        st.markdown("<div class='section-head'><h2>Ask the Paper</h2></div>", unsafe_allow_html=True)
-        if "chat_history" not in st.session_state: st.session_state.chat_history = []
+        st.markdown("<div class='section-heading'><span class='icon'>💬</span> Ask the Paper</div>", unsafe_allow_html=True)
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = []
+        # Show chat history with avatars
         for msg in st.session_state.chat_history:
-            with st.chat_message(msg["role"]): st.markdown(msg["content"])
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+        # Chat input (resets automatically after submit)
         q = st.chat_input("Ask a question about this paper...", key=f"ask_{s['id']}")
         if q:
-            st.session_state.chat_history.append({"role":"user","content":q})
-            with st.spinner(""): a = api_ask(s["id"],q)
-            st.session_state.chat_history.append({"role":"assistant","content":a}); st.rerun()
-
-# ─── Tabs ───
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Upload & Summarize", "View Summary", "Compare Papers", "ArXiv Search", "Thesis Proposal"])
-
-with tab1:
-    st.markdown('<p style="color:var(--text-secondary);font-size:14px;">Use the upload panel above to add a PDF/TXT file or paste a research URL.</p>', unsafe_allow_html=True)
+            st.session_state.chat_history.append({"role": "user", "content": q})
+            with st.spinner(""):
+                answer = api_ask(s["id"], q)
+            st.session_state.chat_history.append({"role": "assistant", "content": answer})
+            st.rerun()
 
 with tab2:
     s = st.session_state.current
-    if s and "error" not in s: show_paper(s)
-    elif s and "error" in s: st.error(s["error"])
-    else: st.info("No summary yet — upload a paper to get started.")
-
-with tab3:
-    st.markdown("<div class='section-head'><h2>Compare Papers</h2></div>", unsafe_allow_html=True)
-    hist = st.session_state.history[:20]
-    if len(hist) < 2: st.info("At least 2 papers needed in history.")
+    if s and "error" not in s:
+        show_paper(s)
+    elif s and "error" in s:
+        st.error(f"❌ {s['error']}")
     else:
-        opts = {f"{h['title'][:40]} ({h['created_at'][:10]})":h["id"] for h in hist}
-        c1,c2 = st.columns(2)
-        with c1: sel1 = st.selectbox("Paper 1", list(opts.keys()), index=0, key="cp1")
-        with c2: sel2 = st.selectbox("Paper 2", list(opts.keys()), index=min(1,len(opts)-1), key="cp2")
-        if st.button("Compare", type="primary", use_container_width=True):
-            with st.spinner("Analyzing..."): r = api_compare(opts[sel1],opts[sel2])
-            if "error" in r: st.error(r["error"])
-            else: st.markdown(f'<div class="card">{r["comparison"]}</div>', unsafe_allow_html=True)
+        st.info("No summary yet. Upload a file in Tab 1.")
 
+# ─── TAB 3 (Compare) ───
+with tab3:
+    st.markdown("<div class='section-heading'><span class='icon'>📊</span> Compare Two Papers</div>", unsafe_allow_html=True)
+    hist = st.session_state.history[:20]
+    if len(hist) < 2:
+        st.info("At least 2 papers needed in history for comparison. Upload and summarize papers first.")
+    else:
+        opts = {f"{h['title'][:40]} ({h['created_at'][:10]})": h["id"] for h in hist}
+        c1, c2 = st.columns(2)
+        with c1:
+            sel1 = st.selectbox("Select Paper 1", list(opts.keys()), index=0, key="cmp1")
+        with c2:
+            sel2 = st.selectbox("Select Paper 2", list(opts.keys()), index=min(1, len(opts)-1), key="cmp2")
+        if st.button("🔍 Compare Papers", type="primary", use_container_width=True):
+            with st.spinner("🤖 Analyzing differences..."):
+                result = api_compare(opts[sel1], opts[sel2])
+            if "error" in result:
+                st.error(f"❌ {result['error']}")
+            else:
+                st.markdown(f'<div class="card"><h3>📊 Comparison Result</h3><div style="line-height:1.8;">{result["comparison"]}</div></div>', unsafe_allow_html=True)
+                with st.expander("📄 Paper 1 Details"):
+                    show_paper(result["paper1"], show_chat=False)
+                with st.expander("📄 Paper 2 Details"):
+                    show_paper(result["paper2"], show_chat=False)
+
+# ─── TAB 4: ArXiv Search ───
 with tab4:
-    st.markdown("<div class='section-head'><h2>ArXiv Search</h2></div>", unsafe_allow_html=True)
-    qc, nc = st.columns([3,1])
-    with qc: aq = st.text_input("q", key="aq", placeholder="Search query...", label_visibility="collapsed")
-    with nc: am = st.number_input("n", 1, 20, 5, label_visibility="collapsed")
-    if aq and st.button("Search", use_container_width=True):
-        with st.spinner("Searching..."): res = requests.post(f"{API_URL}/arxiv-search", json={"query":aq,"max_results":am}).json()
-        for p in res.get("results",[]):
+    st.markdown('<div class="section-heading"><span class="icon">📚</span> Search ArXiv Papers</div>', unsafe_allow_html=True)
+    col_q, col_n = st.columns([3, 1])
+    with col_q:
+        arxiv_query = st.text_input("Search query", key="arxiv_q", placeholder="e.g., machine learning transformers", label_visibility="collapsed")
+    with col_n:
+        arxiv_max = st.number_input("Max results", 1, 20, 5, label_visibility="collapsed")
+    if arxiv_query and st.button("🔍 Search ArXiv", use_container_width=True):
+        with st.spinner(f"Searching ArXiv for '{arxiv_query}'..."):
+            res = requests.post(f"{API_URL}/arxiv-search", json={"query": arxiv_query, "max_results": arxiv_max}).json()
+        for p in res.get("results", []):
             with st.expander(f"**{p['title']}**"):
                 st.markdown(f"**Authors:** {', '.join(p['authors'])}")
                 st.markdown(f"**Published:** {p['published']}")
                 st.markdown(f"**Abstract:** {p['summary']}")
-                st.markdown(f"[Open on ArXiv]({p['link']})")
-                if st.button("Summarize", key=f"ax_{p['link']}"):
-                    st.session_state.current = None; st.session_state["arxiv_url_to_summarize"] = p['link']; st.rerun()
+                st.markdown(f"**Link:** [{p['link']}]({p['link']})")
 
+# ─── TAB 5: Thesis Proposal ───
 with tab5:
-    st.markdown("<div class='section-head'><h2>Thesis Proposal</h2></div>", unsafe_allow_html=True)
+    st.markdown('<div class="section-heading"><span class="icon">📝</span> Thesis Proposal Generator</div>', unsafe_allow_html=True)
+    st.markdown("Select a previously summarized paper to generate a thesis proposal from its research gaps.")
     if st.session_state.history:
-        opts = {f"{h['title'][:60]} ({h['created_at'][:10]})":h["id"] for h in st.session_state.history}
-        sel = st.selectbox("Select a paper", list(opts.keys()), key="tp")
-        if st.button("Generate Proposal", type="primary", use_container_width=True):
-            with st.spinner("Generating..."): prop = requests.post(f"{API_URL}/generate-proposal", json={"sid":opts[sel]}).json()
-            if "error" in prop: st.error(prop["error"])
-            else: st.markdown(f"### {prop['paper_title']}"); st.markdown(f'<div class="card">{prop["proposal"]}</div>', unsafe_allow_html=True)
-    else: st.info("Summarize a paper first!")
+        opts = {f"{h['title'][:60]}... ({h['date'][:10] if h.get('date') else ''})": h["id"] for h in st.session_state.history}
+        sel_prop = st.selectbox("Choose a paper", list(opts.keys()), key="prop_sel")
+        if st.button("🎯 Generate Proposal", use_container_width=True):
+            with st.spinner("Generating thesis proposal..."):
+                prop = requests.post(f"{API_URL}/generate-proposal", json={"sid": opts[sel_prop]}).json()
+            if "error" in prop:
+                st.error(f"❌ {prop['error']}")
+            else:
+                st.markdown(f"### Thesis Proposal: {prop['paper_title']}")
+                st.markdown(f'<div class="card" style="line-height:1.8;">{prop["proposal"]}</div>', unsafe_allow_html=True)
+    else:
+        st.info("📄 Summarize a paper first!")
 
-if not st.session_state.history: api_history()
+# Load history on start
+if not st.session_state.history:
+    st.session_state.history = _cached_history()
 
-st.markdown('<div style="text-align:center;font-size:12px;color:var(--text-muted);padding:32px 0 16px;border-top:1px solid var(--border);margin-top:32px;">ScholarAI v3.0 &middot; FastAPI &middot; Gemini 2.5 &middot; Streamlit &middot; PyPDF2 &middot; SQLite</div>', unsafe_allow_html=True)
 
-st.markdown('</div></div>', unsafe_allow_html=True)
+
+
