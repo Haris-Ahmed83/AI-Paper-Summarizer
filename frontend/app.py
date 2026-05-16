@@ -106,43 +106,6 @@ def theme_css(dark: bool):
             hr { border-color: #e2e8f0 !important; }
             pre { background: #f1f5f9 !important; }
         </style>"""
-            code { background: rgba(137, 180, 250, 0.1); color: #89b4fa; padding: 2px 8px; border-radius: 6px; font-size: 13px; }
-        </style>"""
-    else:
-        return base + """
-        <style>
-            .main, .stApp { background: #f0f2f5; color: #1e1e2e; }
-            .card { background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(0,0,0,0.06); backdrop-filter: blur(8px); box-shadow: 0 2px 16px rgba(0,0,0,0.04); }
-            .card:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.08); border-color: rgba(37, 99, 235, 0.15); }
-            .card h2, .card h3, .card p { color: #1e1e2e !important; }
-            .header { background: linear-gradient(135deg, #2563eb, #6366f1, #7c3aed); }
-            .header h1 { color: white !important; }
-            .header p { color: rgba(255,255,255,0.85) !important; }
-            .point { background: rgba(37, 99, 235, 0.06); border-left-color: #2563eb; }
-            .badge { background: rgba(37, 99, 235, 0.08); color: #2563eb; }
-            .meta { color: #64748b !important; }
-            .history-item { background: rgba(255,255,255,0.7); border: 1px solid rgba(0,0,0,0.04); }
-            .history-item:hover { border-color: #2563eb; background: rgba(37, 99, 235, 0.03); }
-            div[data-testid="stFileUploader"] { border: 2px dashed rgba(37, 99, 235, 0.2); background: rgba(255,255,255,0.6); }
-            .stButton > button { background: linear-gradient(135deg, #2563eb, #6366f1); color: white !important; }
-            .stButton > button:hover { background: linear-gradient(135deg, #3b82f6, #818cf8); }
-            .stTextInput > div > input { background: rgba(255,255,255,0.8); border: 1px solid rgba(0,0,0,0.08); color: #1e1e2e; }
-            .stSelectbox > div > div { background: rgba(255,255,255,0.8); border: 1px solid rgba(0,0,0,0.08); color: #1e1e2e; }
-            .stTabs [data-baseweb="tab-list"] { background: rgba(255,255,255,0.6); }
-            .stTabs [data-baseweb="tab"] { color: #64748b; }
-            .stTabs [data-baseweb="tab"][aria-selected="true"] { background: rgba(37, 99, 235, 0.08); color: #2563eb; }
-            .sidebar-section h3 { color: #2563eb !important; }
-            .finding-item { background: rgba(37, 99, 235, 0.04); }
-            .finding-item .num { color: #2563eb; }
-            .gap-item { background: rgba(245, 158, 11, 0.06); border-left-color: #f59e0b; }
-            .gap-item:hover { background: rgba(245, 158, 11, 0.1); }
-            .term-item { background: rgba(16, 185, 129, 0.06); }
-            .term-item strong { color: #059669; }
-            .research-section { background: rgba(255,255,255,0.6); border: 1px solid rgba(0,0,0,0.04); }
-            .chat-msg { background: rgba(255,255,255,0.7); border: 1px solid rgba(0,0,0,0.06); }
-            hr { border-color: rgba(0,0,0,0.06); }
-            code { background: rgba(37, 99, 235, 0.06); color: #2563eb; padding: 2px 8px; border-radius: 6px; font-size: 13px; }
-        </style>"""
 
 # ─── API ───
 def api_summarize(file, lang: str, stype: str) -> dict:
