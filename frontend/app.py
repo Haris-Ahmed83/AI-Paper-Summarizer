@@ -528,6 +528,11 @@ with tab5:
 if not st.session_state.history:
     api_history()
 
+st.markdown(f"""
+<div style="text-align:center; font-size:12px; opacity:0.4; margin-top:48px; padding:16px;">
+    v3.0 · FastAPI · Gemini 2.5 · Streamlit · PyPDF2 · SQLite
+</div>""", unsafe_allow_html=True)
+
 
 
 
