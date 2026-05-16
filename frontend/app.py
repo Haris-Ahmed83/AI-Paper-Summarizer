@@ -3,8 +3,7 @@ AI Research Paper Summarizer Pro v3.0
 Professional Streamlit Frontend with Dark/Light Mode
 """
 
-import os, json, subprocess, requests, streamlit as st
-from pathlib import Path
+import os, json, requests, streamlit as st
 
 API_URL = os.environ.get("API_URL", "http://localhost:8001")
 
@@ -210,7 +209,7 @@ with st.sidebar:
         with c1:
             if st.button(label, key=f"h_{item['id']}", help=item['title'], use_container_width=True):
                 s = api_get(item['id'])
-                if s: st.session_state.current = s; st.rerun()
+                if s: st.session_state.current = s; st.session_state.pop("chat_history", None); st.rerun()
                 else: st.toast("Failed to load")
         with c2:
             if st.button("✕", key=f"d_{item['id']}"):
@@ -247,6 +246,7 @@ with tab1:
                     st.error(f"❌ {result['error']}")
                 else:
                     st.session_state.current = result
+                    st.session_state.pop("chat_history", None)
                     st.success("Done!")
                     _cached_history.clear()
                     api_history()
@@ -261,7 +261,7 @@ with tab1:
                 <strong>🔗 {url[:80]}{'...' if len(url) > 80 else ''}</strong>
             </div>""", unsafe_allow_html=True)
 
-            if st.button("🚀 Fetch & Summarize", type="primary", use_container_width=True):
+            if st.button("Fetch & Summarize", type="primary", use_container_width=True):
                 with st.spinner("Fetching URL..."):
                     result = api_summarize_url(url, lang, stype)
 
@@ -269,6 +269,7 @@ with tab1:
                     st.error(f"{result['error']}")
                 else:
                     st.session_state.current = result
+                    st.session_state.pop("chat_history", None)
                     st.success("Done!")
                     _cached_history.clear()
                     api_history()
@@ -416,7 +417,6 @@ def show_paper(s, show_chat=True):
         st.markdown("<div class='section-heading'><span class='icon'>💬</span> Ask the Paper</div>", unsafe_allow_html=True)
         if "chat_history" not in st.session_state:
             st.session_state.chat_history = []
-        # Show chat history with avatars
         for msg in st.session_state.chat_history:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
@@ -463,54 +463,15 @@ with tab3:
                 with st.expander("📄 Paper 2 Details"):
                     show_paper(result["paper2"], show_chat=False)
 
-# ─── TAB 4 ───
+# ─── TAB 4: ArXiv Search ───
 with tab4:
-    st.markdown(f"""
-    <div class="card">
-        <h3>📡 API Status</h3>
-        <p>Backend: <strong>{"✅ Running" if True else "❌ Offline"}</strong></p>
-        <p>API URL: <code>{API_URL}</code></p>
-    </div>
-
-    <div class="card">
-        <h3>🚀 Deploy for Free</h3>
-        <ol>
-            <li><strong>Push to GitHub</strong> — create a repo and upload all files</li>
-            <li><strong>Streamlit Community Cloud</strong> — <a href="https://streamlit.io/cloud">streamlit.io/cloud</a>
-                <br>→ Connect GitHub repo → Deploy <code>frontend/app.py</code></li>
-            <li><strong>Backend on Render</strong> — <a href="https://render.com">render.com</a> (free tier)
-                <br>→ New Web Service → <code>backend/</code> → Start command: <code>uvicorn app:app --host 0.0.0.0 --port 8000</code></li>
-            <li><strong>Set Secrets:</strong> <code>GEMINI_API_KEY</code> and <code>API_URL</code></li>
-        </ol>
-        <p style="margin-top:12px;"><strong>Deployment Files:</strong> <code>backend/requirements.txt</code> and <code>frontend/requirements.txt</code> ready ✅</p>
-    </div>
-
-    <div class="card">
-        <h3>🧠 AI Engine: Google Gemini 2.5 Flash</h3>
-        <ul>
-            <li><strong>✅ Free Tier:</strong> 10 req/min, 1,500 req/day — no credit card needed</li>
-            <li><strong>⚠️ NOT Unlimited:</strong> Quota exceed ho to 1 min wait karo</li>
-            <li><strong>🔑 Get Your Own Key:</strong> <a href="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a></li>
-        </ul>
-    </div>
-    <div class="card">
-        <h3>ℹ️ About</h3>
-        <p><strong>Version:</strong> 3.0 — Advanced Level Project</p>
-        <p><strong>Tech:</strong> FastAPI · Google Gemini 2.5 · Streamlit · PyPDF2 · SQLite</p>
-        <p><strong>Features:</strong> PDF/TXT · 50MB support · Chunking · Urdu/English · Citations · Export · History</p>
-        <p><strong>Author:</strong> HarisAhmed83</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-# ─── TAB 5: ArXiv Search ───
-with tab5:
     st.markdown('<div class="section-heading"><span class="icon">📚</span> Search ArXiv Papers</div>', unsafe_allow_html=True)
     col_q, col_n = st.columns([3, 1])
     with col_q:
         arxiv_query = st.text_input("Search query", key="arxiv_q", placeholder="e.g., machine learning transformers", label_visibility="collapsed")
     with col_n:
         arxiv_max = st.number_input("Max results", 1, 20, 5, label_visibility="collapsed")
-    if arxiv_query and st.button("🔍 Search ArXiv", use_container_width=True):
+    if arxiv_query and st.button("Search ArXiv", use_container_width=True):
         with st.spinner(f"Searching ArXiv for '{arxiv_query}'..."):
             res = requests.post(f"{API_URL}/arxiv-search", json={"query": arxiv_query, "max_results": arxiv_max}).json()
         for p in res.get("results", []):
@@ -520,21 +481,56 @@ with tab5:
                 st.markdown(f"**Abstract:** {p['summary']}")
                 st.markdown(f"**Link:** [{p['link']}]({p['link']})")
 
-# ─── TAB 6: Thesis Proposal ───
-with tab6:
+# ─── TAB 5: Thesis Proposal ───
+with tab5:
     st.markdown('<div class="section-heading"><span class="icon">📝</span> Thesis Proposal Generator</div>', unsafe_allow_html=True)
     st.markdown("Select a previously summarized paper to generate a thesis proposal from its research gaps.")
     if st.session_state.history:
-        opts = {f"{h['title'][:60]}... ({h['date'][:10] if h.get('date') else ''})": h["id"] for h in st.session_state.history}
+        opts = {f"{h['title'][:60]} ({h['created_at'][:10] if h.get('created_at') else ''})": h["id"] for h in st.session_state.history}
         sel_prop = st.selectbox("Choose a paper", list(opts.keys()), key="prop_sel")
-        if st.button("🎯 Generate Proposal", use_container_width=True):
+        if st.button("Generate Proposal", use_container_width=True):
             with st.spinner("Generating thesis proposal..."):
                 prop = requests.post(f"{API_URL}/generate-proposal", json={"sid": opts[sel_prop]}).json()
             if "error" in prop:
-                st.error(f"❌ {prop['error']}")
+                st.error(f"{prop['error']}")
             else:
                 st.markdown(f"### Thesis Proposal: {prop['paper_title']}")
                 st.markdown(f'<div class="card" style="line-height:1.8;">{prop["proposal"]}</div>', unsafe_allow_html=True)
+
+# ─── TAB 6: Settings & Deploy ───
+with tab6:
+    st.markdown(f"""
+    <div class="card">
+        <h3>API Status</h3>
+        <p>Backend: <strong>{"Running" if True else "Offline"}</strong></p>
+        <p>API URL: <code>{API_URL}</code></p>
+    </div>
+
+    <div class="card">
+        <h3>Deploy for Free</h3>
+        <ol>
+            <li><strong>Push to GitHub</strong> and create a repo</li>
+            <li><strong>Hugging Face Spaces</strong> — <a href="https://huggingface.co/new-space">huggingface.co/new-space</a>
+                <br>→ Docker SDK → connect repo → set <code>GEMINI_API_KEY</code> secret</li>
+            <li><strong>Streamlit Cloud</strong> — <a href="https://streamlit.io/cloud">streamlit.io/cloud</a>
+                <br>→ Deploy <code>frontend/app.py</code> with <code>API_URL</code> pointing to your backend</li>
+        </ol>
+    </div>
+
+    <div class="card">
+        <h3>AI Engine: Google Gemini 2.5 Flash</h3>
+        <ul>
+            <li>Free Tier: 10 req/min, 1,500 req/day</li>
+            <li><a href="https://aistudio.google.com/apikey">Get your API key</a></li>
+        </ul>
+    </div>
+    <div class="card">
+        <h3>About</h3>
+        <p><strong>Version:</strong> 3.0</p>
+        <p><strong>Tech:</strong> FastAPI · Google Gemini · Streamlit · PyPDF2 · SQLite</p>
+        <p><strong>Author:</strong> HarisAhmed83</p>
+    </div>
+    """, unsafe_allow_html=True)
     else:
         st.info("📄 Summarize a paper first!")
 
