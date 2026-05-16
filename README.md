@@ -1,3 +1,12 @@
+---
+title: AI Paper Summarizer Pro
+emoji: 📄
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
+
 # AI Paper Summarizer Pro
 
 Research paper summarizer with AI (Gemini 2.5 Flash). PDF/TXT/URL input, Urdu/English support, structured research extraction (methodology, findings, gaps, citations), Q&A, comparison, PDF export, ArXiv search, thesis proposal generator.
