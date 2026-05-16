@@ -7,7 +7,7 @@ Supports: PDF, TXT | Large files | Citations | Export
 import os, re, uuid, json, sqlite3
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, List
+from typing import List
 
 import PyPDF2
 import requests as http_requests
@@ -15,7 +15,6 @@ from bs4 import BeautifulSoup
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # ─── Config ───
@@ -23,7 +22,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "outputs"
 DB_PATH = BASE_DIR / "history.db"
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyAFWD76s1Uup01_xTwtU1iuaAey6Lf7WKo")
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
+
+if not GEMINI_KEY:
+    raise RuntimeError("GEMINI_API_KEY environment variable not set")
+
 GEMINI_MODEL = "gemini-2.5-flash"
 MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", "50"))
 CHUNK_SIZE = 5000
@@ -534,11 +537,6 @@ Make it specific to this paper's domain. Write in formal academic English."""
         if "QUOTA" in err: raise HTTPException(429, "Gemini API quota exceeded")
         raise HTTPException(500, f"AI error: {err}")
 
-# ─── Serve Flutter Build ───
-FLUTTER_BUILD = BASE_DIR / "flutter_app" / "build" / "web"
-if FLUTTER_BUILD.exists():
-    app.mount("/", StaticFiles(directory=str(FLUTTER_BUILD), html=True), name="flutter")
-
-if __name__ == "__main__":
+# ─── ArXiv Search ───
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

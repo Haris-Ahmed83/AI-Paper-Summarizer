@@ -4,6 +4,5 @@ uvicorn>=0.20.0
 pypdf2>=3.0.0
 python-multipart>=0.0.6
 requests>=2.31.0
-google-generativeai>=0.8.0
 beautifulsoup4>=4.12.0
 fpdf2>=2.7.0

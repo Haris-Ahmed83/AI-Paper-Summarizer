@@ -16,8 +16,7 @@ st.set_page_config(
 
 # ─── Session State ───
 defaults = {
-    "current": None, "history": [], "dark_mode": False, "page": "summarize",
-    "editing_title": "", "editing_summary": "",
+    "current": None, "history": [], "dark_mode": False,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -48,6 +47,15 @@ def theme_css(dark: bool):
         .stTabs [data-baseweb="tab"] { border-radius: 7px; padding: 6px 16px; font-weight: 500; font-size: 13px; }
         .section-heading { font-size: 17px; font-weight: 600; margin: 20px 0 10px; display: flex; align-items: center; gap: 8px; }
         .section-heading .icon { font-size: 18px; }
+        .research-section { padding: 16px; border-radius: 8px; margin: 8px 0; line-height: 1.7; }
+        .finding-item { display: flex; gap: 10px; padding: 8px 12px; margin: 4px 0; border-radius: 6px; font-size: 14px; line-height: 1.6; }
+        .finding-item .num { font-weight: 700; min-width: 22px; }
+        .gap-item { padding: 10px 14px; margin: 4px 0; border-radius: 6px; border-left: 3px solid; font-size: 14px; line-height: 1.6; }
+        .term-item { padding: 6px 12px; margin: 3px 0; font-size: 14px; }
+        .diff-badge { padding: 2px 10px; border-radius: 5px; font-size: 11px; font-weight: 600; display: inline-block; }
+        .diff-easy { background: #10b98120; color: #10b981; }
+        .diff-medium { background: #f59e0b20; color: #f59e0b; }
+        .diff-hard { background: #ef444420; color: #ef4444; }
         pre { border-radius: 8px !important; font-size: 13px !important; }
         hr { margin: 16px 0 !important; }
     </style>"""
@@ -202,7 +210,6 @@ with st.sidebar:
     if st.button("Refresh history", use_container_width=True, type="secondary"):
         _cached_history.clear(); api_history(); st.rerun()
     for item in st.session_state.history[:10]:
-        flag = {"english":"EN","urdu":"UR","both":"🌐"}.get(item["language"], "EN")
         label = item['title'][:20] + ("..." if len(item['title']) > 20 else "")
         if item.get('source_url'): label = "URL: " + label
         c1, c2 = st.columns([4,1])
@@ -283,22 +290,22 @@ with tab1:
 
 # ─── TAB 2 ───
 def show_paper(s, show_chat=True):
-    lang_label = {"english":"🇬🇧 English","urdu":"🇵🇰 Urdu","both":"🌐 Both"}
+    lang_label = {"english":"English","urdu":"Urdu","both":"Both"}
     type_label = {"detailed":"In-Depth Research","brief":"Quick Overview","bullet":"Key Points Only"}
-    size_str = f"{s['filesize']/1024:.0f}KB" if s['filesize']<1024*1024 else f"{s['filesize']/(1024*1024):.1f}MB"
+    size_str = f"{s.get('filesize',0)/1024:.0f}KB" if s.get('filesize',0)<1024*1024 else f"{s.get('filesize',0)/(1024*1024):.1f}MB"
     diff = s.get("difficulty_level", "Intermediate")
     diff_cls = {"Beginner":"diff-easy","Intermediate":"diff-medium","Advanced":"diff-hard"}.get(diff, "diff-medium")
 
     st.markdown(f"""
     <div class="card">
-        <h2 style="margin:0 0 4px;">{s['title']}</h2>
+        <h2 style="margin:0 0 4px;">{s.get('title','Untitled')}</h2>
         <p class="meta">
-            <span class="badge">{lang_label.get(s['language'],s['language'])}</span>
-            <span class="badge">{type_label.get(s['summary_type'],s['summary_type'])}</span>
-            <span class="badge">{s['filetype']}</span>
+            <span class="badge">{lang_label.get(s.get('language',''), s.get('language',''))}</span>
+            <span class="badge">{type_label.get(s.get('summary_type',''), s.get('summary_type',''))}</span>
+            <span class="badge">{s.get('filetype','N/A')}</span>
             <span class="badge">{size_str}</span>
-            <span class="badge">📝 {s['word_count']} words</span>
-            <span class="badge">⚡ {s['processing_time']}s</span>
+            <span class="badge">{s.get('word_count',0)} words</span>
+            <span class="badge">{s.get('processing_time',0)}s</span>
             <span class="diff-badge {diff_cls}">{diff}</span>
         </p>
         {_src_link(s) if s.get('source_url') else ''}
@@ -359,9 +366,9 @@ def show_paper(s, show_chat=True):
             st.markdown(f'<div class="card" style="padding:10px 16px;margin:4px 0;"><small>[{i+1}] {c}</small></div>', unsafe_allow_html=True)
 
     # Reading Time + Complexity
-    wc = len((s.get("summary", "") or "").split())
+    wc = len((s.get("summary") or "").split())
     read_min = max(1, round(wc / 250))
-    st.markdown(f'<p class="meta">⏱ Reading time: ~{read_min} min ({wc} words) &nbsp;|&nbsp; 📊 Complexity: {diff}</p>', unsafe_allow_html=True)
+    st.markdown(f'<p class="meta">Reading time: ~{read_min} min ({wc} words) &nbsp;|&nbsp; Complexity: {diff}</p>', unsafe_allow_html=True)
 
     st.markdown("<div class='section-heading'><span class='icon'>📥</span> Export</div>", unsafe_allow_html=True)
     col1, col2, col3, col4 = st.columns(4)
