@@ -29,75 +29,83 @@ def theme_css(dark: bool):
     base = """
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        @keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes slideIn { from { opacity:0; transform:translateX(-12px); } to { opacity:1; transform:translateX(0); } }
         * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
-        .card { animation: fadeIn 0.4s ease; border-radius: 16px; padding: 28px; margin: 16px 0; transition: all 0.3s ease; }
-        .card:hover { transform: translateY(-2px); }
-        .header { animation: fadeIn 0.5s ease; padding: 36px 40px; border-radius: 20px; margin-bottom: 28px; }
-        .header h1 { margin:0; font-size:36px; font-weight: 800; letter-spacing: -0.5px; }
-        .header p { font-size:15px; font-weight: 400; margin-top: 6px; opacity: 0.85; }
-        .point { padding: 14px 18px; border-radius: 12px; margin: 8px 0; border-left: 4px solid; font-size: 14px; line-height: 1.6; transition: all 0.2s; }
-        .point:hover { transform: translateX(4px); }
-        .badge { padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; margin-right: 6px; display: inline-block; }
-        .meta { font-size: 13px; opacity: 0.7; }
+        .card { animation: fadeIn 0.4s ease; border-radius: 12px; padding: 24px; margin: 12px 0; }
+        .header { animation: fadeIn 0.5s ease; padding: 32px 36px; border-radius: 16px; margin-bottom: 24px; }
+        .header h1 { margin:0; font-size:30px; font-weight: 700; letter-spacing: -0.3px; }
+        .header p { font-size:14px; margin-top: 6px; opacity: 0.75; }
+        .point { padding: 12px 16px; border-radius: 8px; margin: 6px 0; border-left: 3px solid; font-size: 14px; line-height: 1.6; }
+        .badge { padding: 3px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; margin-right: 4px; display: inline-block; }
+        .meta { font-size: 13px; opacity: 0.65; }
         .urdu { direction: rtl; text-align: right; font-size: 20px; line-height: 2; }
-        .history-item { padding: 14px; border-radius: 12px; margin: 6px 0; transition: all 0.2s; }
-        div[data-testid="stFileUploader"] { border-radius: 16px; padding: 28px; transition: all 0.3s; }
-        .stButton > button { border-radius: 12px; padding: 12px 28px; font-weight: 600; font-size: 15px; border: none; transition: all 0.25s ease; }
-        .stButton > button:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
-        .stTextInput > div > input { border-radius: 12px; padding: 12px 16px; font-size: 14px; }
-        .stSelectbox > div > div { border-radius: 12px; }
-        .stTabs [data-baseweb="tab-list"] { gap: 8px; border-radius: 14px; padding: 4px; }
-        .stTabs [data-baseweb="tab"] { border-radius: 10px; padding: 8px 20px; font-weight: 500; }
-        .sidebar-section { margin-bottom: 28px; }
-        .sidebar-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; margin-bottom: 8px; }
-        .section-heading { font-size: 18px; font-weight: 700; margin: 24px 0 12px; display: flex; align-items: center; gap: 8px; }
-        .section-heading .icon { font-size: 20px; }
-        .finding-item { padding: 14px 18px; border-radius: 12px; margin: 8px 0; display: flex; gap: 12px; font-size: 14px; line-height: 1.6; align-items: flex-start; }
-        .finding-item .num { font-weight: 700; min-width: 24px; font-size: 13px; }
-        .gap-item { padding: 12px 16px; border-radius: 10px; margin: 6px 0; font-size: 14px; line-height: 1.5; border-left: 3px solid; transition: all 0.2s; }
-        .gap-item:hover { transform: translateX(3px); }
-        .term-item { padding: 10px 16px; border-radius: 10px; margin: 5px 0; font-size: 13px; line-height: 1.5; }
-        .term-item strong { font-weight: 600; }
-        .research-section { padding: 24px; border-radius: 14px; margin: 12px 0; }
-        .chat-msg { padding: 14px 18px; border-radius: 14px; margin: 8px 0; max-width: 85%; font-size: 14px; line-height: 1.6; }
-        .diff-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .history-item { padding: 12px; border-radius: 10px; margin: 4px 0; }
+        div[data-testid="stFileUploader"] { border-radius: 12px; padding: 24px; }
+        .stButton > button { border-radius: 8px; padding: 10px 24px; font-weight: 500; font-size: 14px; border: none; }
+        .stTextInput > div > input { border-radius: 8px; padding: 10px 14px; font-size: 14px; }
+        .stSelectbox > div > div { border-radius: 8px; }
+        .stTabs [data-baseweb="tab-list"] { gap: 4px; border-radius: 10px; padding: 3px; }
+        .stTabs [data-baseweb="tab"] { border-radius: 7px; padding: 6px 16px; font-weight: 500; font-size: 13px; }
+        .section-heading { font-size: 17px; font-weight: 600; margin: 20px 0 10px; display: flex; align-items: center; gap: 8px; }
+        .section-heading .icon { font-size: 18px; }
+        pre { border-radius: 8px !important; font-size: 13px !important; }
+        hr { margin: 16px 0 !important; }
     </style>"""
     if dark:
         return base + """
         <style>
-            .main, .stApp { background: #0b0e14; color: #cdd6f4; }
-            .card { background: rgba(30, 34, 48, 0.85); border: 1px solid rgba(137, 180, 250, 0.08); box-shadow: 0 4px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.03); }
-            .card:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.35); border-color: rgba(137, 180, 250, 0.2); }
-            .card h2, .card h3, .card p { color: #cdd6f4 !important; }
-            .header { background: linear-gradient(135deg, #11141f, #1a1f35); border: 1px solid rgba(137, 180, 250, 0.12); }
-            .header h1 { color: #89b4fa !important; }
-            .header p { color: #9399b2 !important; }
-            .point { background: rgba(30, 34, 48, 0.6); border-left-color: #89b4fa; color: #cdd6f4; }
-            .badge { background: rgba(137, 180, 250, 0.12); color: #89b4fa; }
-            .meta { color: #6c7086 !important; }
-            .urdu { color: #cdd6f4; }
-            .history-item { background: rgba(30, 34, 48, 0.6); border: 1px solid rgba(137, 180, 250, 0.06); }
-            .history-item:hover { border-color: #89b4fa; background: rgba(137, 180, 250, 0.06); }
-            div[data-testid="stFileUploader"] { border: 2px dashed rgba(137, 180, 250, 0.25); background: rgba(30, 34, 48, 0.5); }
-            .stButton > button { background: linear-gradient(135deg, #89b4fa, #b4d0ff); color: #0b0e14 !important; }
-            .stButton > button:hover { background: linear-gradient(135deg, #9dc2ff, #c8ddff); }
-            .stTextInput > div > input { background: rgba(30, 34, 48, 0.8); border: 1px solid rgba(137, 180, 250, 0.12); color: #cdd6f4; }
-            .stSelectbox > div > div { background: rgba(30, 34, 48, 0.8); border: 1px solid rgba(137, 180, 250, 0.12); color: #cdd6f4; }
-            .stRadio > div { color: #cdd6f4; }
-            .stTabs [data-baseweb="tab-list"] { background: rgba(30, 34, 48, 0.6); }
-            .stTabs [data-baseweb="tab"] { color: #6c7086; }
-            .stTabs [data-baseweb="tab"][aria-selected="true"] { background: rgba(137, 180, 250, 0.15); color: #89b4fa; }
-            .sidebar-section h3 { color: #89b4fa !important; }
-            .finding-item { background: rgba(30, 34, 48, 0.5); }
-            .finding-item .num { color: #89b4fa; }
-            .gap-item { background: rgba(30, 34, 48, 0.4); border-left-color: #f9e2af; }
-            .gap-item:hover { background: rgba(249, 226, 175, 0.08); }
-            .term-item { background: rgba(30, 34, 48, 0.4); }
-            .term-item strong { color: #a6e3a1; }
-            .research-section { background: rgba(30, 34, 48, 0.4); border: 1px solid rgba(137, 180, 250, 0.06); }
-            .chat-msg { background: rgba(30, 34, 48, 0.6); }
-            hr { border-color: rgba(137, 180, 250, 0.1); }
+            .main, .stApp { background: #0c0e15; color: #e2e8f0; }
+            .card { background: #151821; border: 1px solid rgba(59,130,246,0.08); box-shadow: 0 2px 16px rgba(0,0,0,0.2); }
+            .card:hover { border-color: rgba(59,130,246,0.2); }
+            .card h2, .card h3, .card p { color: #e2e8f0 !important; }
+            .header { background: linear-gradient(135deg, #141824, #1a2035); border: 1px solid rgba(59,130,246,0.1); }
+            .header h1 { color: #60a5fa !important; }
+            .header p { color: #94a3b8 !important; }
+            .point { background: rgba(20,24,36,0.6); border-left-color: #3b82f6; color: #e2e8f0; }
+            .badge { background: rgba(59,130,246,0.1); color: #60a5fa; }
+            .meta { color: #64748b !important; }
+            .history-item { background: rgba(20,24,36,0.5); border: 1px solid rgba(59,130,246,0.05); }
+            .history-item:hover { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+            div[data-testid="stFileUploader"] { border: 1.5px dashed rgba(59,130,246,0.25); background: rgba(20,24,36,0.5); }
+            .stButton > button { background: #3b82f6; color: white !important; }
+            .stButton > button:hover { background: #2563eb; }
+            .stTextInput > div > input { background: #151821; border: 1px solid rgba(59,130,246,0.1); color: #e2e8f0; }
+            .stSelectbox > div > div { background: #151821; border: 1px solid rgba(59,130,246,0.1); color: #e2e8f0; }
+            .stRadio > div { color: #e2e8f0; }
+            .stTabs [data-baseweb="tab-list"] { background: #151821; }
+            .stTabs [data-baseweb="tab"] { color: #64748b; }
+            .stTabs [data-baseweb="tab"][aria-selected="true"] { background: rgba(59,130,246,0.12); color: #60a5fa; }
+            hr { border-color: rgba(59,130,246,0.08) !important; }
+            pre { background: #0c0e15 !important; }
+        </style>"""
+    else:
+        return base + """
+        <style>
+            .main, .stApp { background: #f8fafc; color: #1e293b; }
+            .card { background: white; border: 1px solid #e2e8f0; box-shadow: 0 1px 8px rgba(0,0,0,0.04); }
+            .card:hover { border-color: #cbd5e1; }
+            .card h2, .card h3, .card p { color: #1e293b !important; }
+            .header { background: linear-gradient(135deg, #f1f5f9, #e2e8f0); border: 1px solid #cbd5e1; }
+            .header h1 { color: #1e40af !important; }
+            .header p { color: #475569 !important; }
+            .point { background: #f8fafc; border-left-color: #3b82f6; color: #1e293b; }
+            .badge { background: #eff6ff; color: #2563eb; }
+            .meta { color: #94a3b8 !important; }
+            .history-item { background: white; border: 1px solid #e2e8f0; }
+            .history-item:hover { border-color: #3b82f6; background: #f8fafc; }
+            div[data-testid="stFileUploader"] { border: 1.5px dashed #cbd5e1; background: white; }
+            .stButton > button { background: #2563eb; color: white !important; }
+            .stButton > button:hover { background: #1d4ed8; }
+            .stTextInput > div > input { background: white; border: 1px solid #e2e8f0; color: #1e293b; }
+            .stSelectbox > div > div { background: white; border: 1px solid #e2e8f0; color: #1e293b; }
+            .stRadio > div { color: #1e293b; }
+            .stTabs [data-baseweb="tab-list"] { background: #e2e8f0; }
+            .stTabs [data-baseweb="tab"] { color: #64748b; }
+            .stTabs [data-baseweb="tab"][aria-selected="true"] { background: white; color: #2563eb; }
+            hr { border-color: #e2e8f0 !important; }
+            pre { background: #f1f5f9 !important; }
+        </style>"""
             code { background: rgba(137, 180, 250, 0.1); color: #89b4fa; padding: 2px 8px; border-radius: 6px; font-size: 13px; }
         </style>"""
     else:
