@@ -226,8 +226,9 @@ with st.sidebar:
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📤 Upload & Summarize", "📖 View Summary", "📊 Compare Papers", "📚 ArXiv Search", "📝 Thesis Proposal", "⚙️ Settings & Deploy"])
 
 # ─── TAB 1 ───
+arxiv_url = st.session_state.pop("arxiv_url_to_summarize", None)
 with tab1:
-    input_mode = st.radio("Input Mode", ["📄 File Upload", "🔗 URL"], horizontal=True, label_visibility="collapsed")
+    input_mode = st.radio("Input Mode", ["📄 File Upload", "🔗 URL"], horizontal=True, label_visibility="collapsed", index=1 if arxiv_url else 0)
 
     if input_mode == "📄 File Upload":
         st.markdown("### Upload Document")
@@ -260,9 +261,21 @@ with tab1:
                     st.rerun()
     else:
         st.markdown("### Enter URL")
-        url = st.text_input("Paste research paper / article URL", placeholder="https://example.com/paper", label_visibility="collapsed")
+        url = st.text_input("Paste research paper / article URL", value=arxiv_url or "", placeholder="https://example.com/paper", label_visibility="collapsed")
 
-        if url:
+        if arxiv_url and not st.session_state.get("arxiv_auto_summarized"):
+            st.session_state.arxiv_auto_summarized = True
+            with st.spinner("Fetching URL..."):
+                result = api_summarize_url(arxiv_url, lang, stype)
+            if "error" in result:
+                st.error(f"{result['error']}")
+            else:
+                st.session_state.current = result
+                st.session_state.pop("chat_history", None)
+                _cached_history.clear()
+                api_history()
+                st.rerun()
+        elif url:
             st.markdown(f"""
             <div class="card" style="padding:16px;">
                 <strong>🔗 {url[:80]}{'...' if len(url) > 80 else ''}</strong>
@@ -487,6 +500,11 @@ with tab4:
                 st.markdown(f"**Published:** {p['published']}")
                 st.markdown(f"**Abstract:** {p['summary']}")
                 st.markdown(f"**Link:** [{p['link']}]({p['link']})")
+                if st.button("Summarize this Paper", key=f"arxiv_{p['link']}", use_container_width=True):
+                    st.session_state.current = None
+                    st.session_state.pop("chat_history", None)
+                    st.session_state["arxiv_url_to_summarize"] = p['link']
+                    st.rerun()
 
 # ─── TAB 5: Thesis Proposal ───
 with tab5:
