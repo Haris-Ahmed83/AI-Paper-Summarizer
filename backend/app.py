@@ -22,9 +22,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "outputs"
 DB_PATH = BASE_DIR / "history.db"
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_KEYS = [k.strip() for k in (
+    os.environ.get("GEMINI_API_KEYS") or
+    os.environ.get("GEMINI_API_KEY") or
+    ""
+).split(",") if k.strip()]
 
-if not GEMINI_KEY:
+# Also pick up GEMINI_API_KEY_2, GEMINI_API_KEY_3, ... for HF Spaces
+for i in range(2, 10):
+    k = os.environ.get(f"GEMINI_API_KEY_{i}")
+    if k: GEMINI_KEYS.append(k.strip())
+
+if not GEMINI_KEYS:
     raise RuntimeError("GEMINI_API_KEY environment variable not set")
 
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -63,22 +72,31 @@ def init_db():
 init_db()
 
 # ─── Gemini REST API Call ───
+_gemini_idx = 0
 def gemini_chat(prompt: str) -> str:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_KEY}"
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    resp = http_requests.post(url, json=payload, timeout=60)
-    if resp.status_code != 200:
-        err = resp.text[:300]
-        if "quota" in err.lower() or "429" in err:
-            raise Exception("QUOTA_EXCEEDED")
-        if "not supported" in err.lower() or "image" in err.lower():
-            raise Exception("MODEL_ERROR")
-        raise Exception(f"API error ({resp.status_code}): {err}")
-    data = resp.json()
-    candidates = data.get("candidates", [])
-    if not candidates:
-        raise Exception("Empty Gemini response")
-    return candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+    global _gemini_idx
+    last_err = None
+    for _ in range(len(GEMINI_KEYS)):
+        key = GEMINI_KEYS[_gemini_idx % len(GEMINI_KEYS)]
+        _gemini_idx += 1
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={key}"
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        resp = http_requests.post(url, json=payload, timeout=60)
+        if resp.status_code == 429:
+            last_err = "QUOTA_EXCEEDED"
+            continue
+        if resp.status_code != 200:
+            err = resp.text[:300]
+            if "quota" in err.lower():
+                last_err = "QUOTA_EXCEEDED"
+                continue
+            raise Exception(f"API error ({resp.status_code}): {err}")
+        data = resp.json()
+        candidates = data.get("candidates", [])
+        if not candidates:
+            raise Exception("Empty Gemini response")
+        return candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+    raise Exception(last_err or "All API keys exhausted")
 
 # ─── Models ───
 class SummaryResponse(BaseModel):
