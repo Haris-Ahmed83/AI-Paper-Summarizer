@@ -223,7 +223,7 @@ with st.sidebar:
                 api_delete(item['id']); st.rerun()
 
 # ─── Main Tabs ───
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📤 Upload & Summarize", "📖 View Summary", "📊 Compare Papers", "📚 ArXiv Search", "📝 Thesis Proposal", "⚙️ Settings & Deploy"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📤 Upload & Summarize", "📖 View Summary", "📊 Compare Papers", "📚 ArXiv Search", "📝 Thesis Proposal"])
 
 # ─── TAB 1 ───
 arxiv_url = st.session_state.pop("arxiv_url_to_summarize", None)
@@ -523,41 +523,6 @@ with tab5:
                 st.markdown(f'<div class="card" style="line-height:1.8;">{prop["proposal"]}</div>', unsafe_allow_html=True)
     else:
         st.info("Summarize a paper first!")
-
-# ─── TAB 6: Settings & Deploy ───
-with tab6:
-    st.markdown(f"""
-    <div class="card">
-        <h3>API Status</h3>
-        <p>Backend: <strong>{"Running" if True else "Offline"}</strong></p>
-        <p>API URL: <code>{API_URL}</code></p>
-    </div>
-
-    <div class="card">
-        <h3>Deploy for Free</h3>
-        <ol>
-            <li><strong>Push to GitHub</strong> and create a repo</li>
-            <li><strong>Hugging Face Spaces</strong> — <a href="https://huggingface.co/new-space">huggingface.co/new-space</a>
-                <br>→ Docker SDK → connect repo → set <code>GEMINI_API_KEY</code> secret</li>
-            <li><strong>Streamlit Cloud</strong> — <a href="https://streamlit.io/cloud">streamlit.io/cloud</a>
-                <br>→ Deploy <code>frontend/app.py</code> with <code>API_URL</code> pointing to your backend</li>
-        </ol>
-    </div>
-
-    <div class="card">
-        <h3>AI Engine: Google Gemini 2.5 Flash</h3>
-        <ul>
-            <li>Free Tier: 10 req/min, 1,500 req/day</li>
-            <li><a href="https://aistudio.google.com/apikey">Get your API key</a></li>
-        </ul>
-    </div>
-    <div class="card">
-        <h3>About</h3>
-        <p><strong>Version:</strong> 3.0</p>
-        <p><strong>Tech:</strong> FastAPI · Google Gemini · Streamlit · PyPDF2 · SQLite</p>
-        <p><strong>Author:</strong> HarisAhmed83</p>
-    </div>
-    """, unsafe_allow_html=True)
 
 # Load history on start
 if not st.session_state.history:
