@@ -176,69 +176,45 @@ dark = st.session_state.dark_mode
 st.markdown(theme_css(dark), unsafe_allow_html=True)
 
 # ─── Header ───
-mode_icon = "🌙" if not dark else "☀️"
+mode_icon = "☀️" if not dark else "🌙"
 st.markdown(f"""
 <div class="header" style="display:flex; justify-content:space-between; align-items:center;">
     <div>
         <h1>📄 AI Paper Summarizer</h1>
-        <p>MPhil/PhD Research Assistant — Extract methodology, findings, gaps & more — English & Urdu</p>
+        <p>MPhil/PhD Research Assistant — Extract methodology, findings, gaps & more</p>
     </div>
-    <div style="text-align:right; display:flex; gap:10px; align-items:center;">
-        <span style="font-size:12px; opacity:0.6; background:rgba(255,255,255,0.08); padding:4px 14px; border-radius:20px;">v3.0</span>
+    <div style="text-align:right;">
+        <span style="font-size:11px; opacity:0.5; padding:4px 12px; border:1px solid rgba(128,128,128,0.2); border-radius:6px;">v3.0</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 # ─── Sidebar ───
 with st.sidebar:
-    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-
-    # Theme toggle
-    if st.button(f"{mode_icon} {'Light Mode' if dark else 'Dark Mode'}", use_container_width=True):
-        st.session_state.dark_mode = not dark
-        st.rerun()
-
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-    st.markdown("### 🌐 Language / زبان")
-
-    lang = st.radio("lang", ["english", "urdu", "both"],
-        format_func=lambda x: {"english": "🇬🇧 English", "urdu": "🇵🇰 Urdu (اردو)", "both": "🌐 Both"}[x],
-        label_visibility="collapsed", index=0)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-    st.markdown("### 📋 Summary Type")
-    stype = st.radio("type", ["detailed", "brief", "bullet"],
-        format_func=lambda x: {"detailed": "🔍 In-Depth Research", "brief": "📝 Quick Overview", "bullet": "• Key Points Only"}[x],
-        label_visibility="collapsed", index=0)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-    st.markdown("### 📂 History")
-    if st.button("🔄 Refresh", use_container_width=True): api_history()
-
-    for item in st.session_state.history[:15]:
-        flag = {"english":"🇬🇧","urdu":"🇵🇰","both":"🌐"}.get(item["language"], "🌐")
-        size = f"{item['filesize']/1024:.0f}KB" if item['filesize'] < 1024*1024 else f"{item['filesize']/(1024*1024):.1f}MB"
-        label = item['title'][:25]
-        if item.get('source_url'):
-            label = "🔗 " + label
-        cols = st.columns([3, 1, 1])
-        with cols[0]:
-            st.markdown(f"""<div class="history-item">
-                <small>{flag} <strong>{label}</strong></small><br>
-                <small class="meta">{item['filetype']} · {size} · {item['created_at'][:10]}</small>
-            </div>""", unsafe_allow_html=True)
-        with cols[1]:
-            if st.button("📂", key=f"l_{item['id']}"):
+    st.markdown("**Settings**")
+    lang = st.selectbox("Language", ["english", "urdu", "both"],
+        format_func=lambda x: {"english": "English", "urdu": "Urdu (اردو)", "both": "Both"}[x])
+    stype = st.selectbox("Summary Type", ["detailed", "brief", "bullet"],
+        format_func=lambda x: {"detailed": "In-Depth Research", "brief": "Quick Overview", "bullet": "Key Points Only"}[x])
+    if st.button(f"{mode_icon} {'Light' if dark else 'Dark'} Mode", use_container_width=True):
+        st.session_state.dark_mode = not dark; st.rerun()
+    st.divider()
+    st.markdown("**History**")
+    if st.button("Refresh history", use_container_width=True, type="secondary"):
+        _cached_history.clear(); api_history(); st.rerun()
+    for item in st.session_state.history[:10]:
+        flag = {"english":"EN","urdu":"UR","both":"🌐"}.get(item["language"], "EN")
+        label = item['title'][:20] + ("..." if len(item['title']) > 20 else "")
+        if item.get('source_url'): label = "URL: " + label
+        c1, c2 = st.columns([4,1])
+        with c1:
+            if st.button(label, key=f"h_{item['id']}", help=item['title'], use_container_width=True):
                 s = api_get(item['id'])
                 if s: st.session_state.current = s; st.rerun()
-                else: st.toast("Failed to load summary")
-        with cols[2]:
-            if st.button("🗑", key=f"d_{item['id']}"):
+                else: st.toast("Failed to load")
+        with c2:
+            if st.button("✕", key=f"d_{item['id']}"):
                 api_delete(item['id']); st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
 
 # ─── Main Tabs ───
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📤 Upload & Summarize", "📖 View Summary", "📊 Compare Papers", "📚 ArXiv Search", "📝 Thesis Proposal", "⚙️ Settings & Deploy"])
