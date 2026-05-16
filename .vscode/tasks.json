@@ -1,0 +1,14 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run Summarizer",
+            "type": "shell",
+            "command": "python",
+            "args": ["run.py"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "presentation": { "panel": "dedicated" },
+            "problemMatcher": []
+        }
+    ]
+}

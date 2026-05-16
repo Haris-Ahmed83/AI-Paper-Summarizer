@@ -1,0 +1,9 @@
+{
+  "name": "AI Paper Summarizer Pro",
+  "short_name": "PaperAI",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563EB",
+  "description": "AI-powered research paper summarizer supporting English & Urdu"
+}

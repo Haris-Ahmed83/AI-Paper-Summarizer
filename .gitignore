@@ -1,0 +1,28 @@
+__pycache__/
+*.pyc
+.env
+uploads/*
+outputs/*
+history.db
+
+# Python
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+
+# Flutter build (keep source only)
+flutter_app/.dart_tool/
+flutter_app/build/
+flutter_app/.flutter-plugins*
+
+# IDE
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp scripts
+*.ps1
