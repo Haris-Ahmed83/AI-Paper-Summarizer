@@ -362,29 +362,26 @@ References:
 def extract_title(text: str) -> str:
     """Universal title extractor for any PDF type."""
     lines = text.strip().split('\n')
-    candidates = []
-    skip_starts = ('abstract','received','accepted','published','copyright','editorial','doi','http','volume','journal','page','figure','table','note','keywords','introduction','background','email','correspondence','submitted')
+    skip_starts = ('abstract','received','accepted','published','copyright','editorial','doi','http','volume','journal','page','figure','table','note','keywords','introduction','background','email','correspondence','submitted','this special','this paper','this study','the paper','the study','the authors','in this','we present','we propose','following','based on')
     skip_chars = ['∗','†','‡','◇','♡','♥','@','.com','doi.org','http','©','ISSN','ISBN']
-    for line in lines[:20]:
+    for line in lines[:15]:
         line = line.strip()
-        if not line or len(line) < 15 or len(line) > 400: continue
+        if not line or len(line) < 15 or len(line) > 200: continue
         if any(line.lower().startswith(s) for s in skip_starts): continue
         if any(c in line for c in skip_chars): continue
         if re.match(r'^[\d\s\W]+$', line): continue
-        candidates.append(line)
-    if not candidates: return "Research Paper"
-    title = max(candidates, key=len)
-    title = _clean_extracted_text(title)
-    # Check next line for continuation
-    for i, ln in enumerate(lines[:20]):
-        if ln.strip() and ln.strip() in title:
-            if i + 1 < len(lines):
-                nxt = lines[i+1].strip()
-                if nxt and len(nxt) > 10 and not any(nxt.lower().startswith(s) for s in skip_starts) and not any(c in nxt for c in skip_chars):
-                    if nxt[0].islower() or title.endswith(',') or title.endswith(':'):
-                        title += ' ' + nxt
-            break
-    return title[:300].strip()
+        title = _clean_extracted_text(line)
+        # Check next line for continuation
+        for j, ln in enumerate(lines[:20]):
+            if ln.strip() == line:
+                if j + 1 < len(lines):
+                    nxt = lines[j+1].strip()
+                    if nxt and len(nxt) > 10 and not any(nxt.lower().startswith(s) for s in skip_starts) and not any(c in nxt for c in skip_chars):
+                        if nxt[0].islower() or title.endswith(',') or title.endswith(':'):
+                            title += ' ' + nxt
+                break
+        return title[:300].strip()
+    return "Research Paper"
 
 def fetch_url_text(url: str) -> str:
     blocked_domains = ["mdpi.com", "elsevier.com", "sciencedirect.com", "springer.com", "tandfonline.com", "wiley.com", "ieee.org", "acm.org", "nature.com"]
