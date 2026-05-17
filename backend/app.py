@@ -112,6 +112,10 @@ for k in GEMINI_KEYS:
 if not PROVIDERS:
     raise RuntimeError("No API keys found. Set GROQ_API_KEY, GEMINI_API_KEY, or GROK_API_KEY.")
 
+# Provider health tracking
+_DEAD_PROVIDERS = set()  # keys that returned 403 (permanently invalid)
+_COOLDOWN = {}            # keys that returned 429, with timestamp
+
 # ─── AI Chat (REST-based, multi-provider) with exponential backoff ───
 def ai_chat(prompt: str, retry: int = 2, system_prompt: str = "", temperature: float = 0.3, max_tokens: int = 4096) -> str:
     import time, random
@@ -121,6 +125,11 @@ def ai_chat(prompt: str, retry: int = 2, system_prompt: str = "", temperature: f
         last_err = None
         for p in PROVIDERS:
             kid = f"{p['type']}_{p['key'][:8]}"
+            if kid in _DEAD_PROVIDERS:
+                continue
+            now = time.time()
+            if kid in _COOLDOWN and now - _COOLDOWN[kid] < 60:
+                continue
             try:
                 if p["type"] == "grok":
                     url = "https://api.x.ai/v1/chat/completions"
@@ -132,11 +141,13 @@ def ai_chat(prompt: str, retry: int = 2, system_prompt: str = "", temperature: f
                     payload = {"model": p["model"], "messages": msgs, "max_tokens": max_tokens, "temperature": temperature}
                     resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
                     if resp.status_code == 429:
-                        last_err = f"grok_quota"; errors[kid] = f"429"; continue
+                        last_err = f"grok_quota"; errors[kid] = f"429"; _COOLDOWN[kid] = time.time(); continue
+                    if resp.status_code == 403:
+                        _DEAD_PROVIDERS.add(kid); errors[kid] = f"403_invalid"; continue
                     if resp.status_code != 200:
                         err = resp.text[:200]
                         if "quota" in err.lower() or "rate" in err.lower():
-                            last_err = f"grok_quota"; errors[kid] = err[:80]; continue
+                            last_err = f"grok_quota"; errors[kid] = err[:80]; _COOLDOWN[kid] = time.time(); continue
                         raise Exception(f"Grok err {resp.status_code}: {err}")
                     data = resp.json()
                     choices = data.get("choices", [])
@@ -154,13 +165,13 @@ def ai_chat(prompt: str, retry: int = 2, system_prompt: str = "", temperature: f
                     payload = {"model": p["model"], "messages": msgs, "max_tokens": max_tokens, "temperature": temperature}
                     resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
                     if resp.status_code == 429:
-                        last_err = f"groq_quota"; errors[kid] = f"429"; continue
+                        last_err = f"groq_quota"; errors[kid] = f"429"; _COOLDOWN[kid] = time.time(); continue
                     if resp.status_code == 413:
                         last_err = f"groq_too_large"; errors[kid] = f"413"; continue
                     if resp.status_code != 200:
                         err = resp.text[:200]
                         if "quota" in err.lower() or "rate" in err.lower():
-                            last_err = f"groq_quota"; errors[kid] = err[:80]; continue
+                            last_err = f"groq_quota"; errors[kid] = err[:80]; _COOLDOWN[kid] = time.time(); continue
                         raise Exception(f"Groq err {resp.status_code}: {err}")
                     data = resp.json()
                     choices = data.get("choices", [])
@@ -173,11 +184,11 @@ def ai_chat(prompt: str, retry: int = 2, system_prompt: str = "", temperature: f
                     payload = {"contents": [{"parts": [{"text": prompt}]}]}
                     resp = http_requests.post(url, json=payload, timeout=90)
                     if resp.status_code == 429:
-                        last_err = f"gemini_quota"; errors[kid] = f"429"; continue
+                        last_err = f"gemini_quota"; errors[kid] = f"429"; _COOLDOWN[kid] = time.time(); continue
                     if resp.status_code != 200:
                         err = resp.text[:200]
                         if "quota" in err.lower():
-                            last_err = f"gemini_quota"; errors[kid] = err[:80]; continue
+                            last_err = f"gemini_quota"; errors[kid] = err[:80]; _COOLDOWN[kid] = time.time(); continue
                         raise Exception(f"Gemini err {resp.status_code}: {err}")
                     data = resp.json()
                     candidates = data.get("candidates", [])
