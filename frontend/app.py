@@ -434,7 +434,7 @@ def show_paper(s, show_chat=True):
         for t in s["key_terms"]:
             st.markdown(f'<div class="term-item">▸ {t}</div>', unsafe_allow_html=True)
 
-    cites = s.get("citations", [])
+    cites = [c for c in (s.get("citations", []) or []) if not c.strip().startswith("(Note:") and not c.strip().startswith("Note:")]
     if cites:
         st.markdown("<div class='section-heading'><span class='icon'>📚</span> References & Citations</div>", unsafe_allow_html=True)
         cites_html = '<div class="card" style="padding:16px 18px;">'
@@ -474,7 +474,7 @@ def show_paper(s, show_chat=True):
         if s.get("practical_implications"): t += f"## Practical Implications\n{s['practical_implications']}\n\n"
         if s.get("conclusion"): t += f"## Conclusion & Implications\n{s['conclusion']}\n\n"
         if s.get("key_terms"): t += "## Key Terms\n" + "\n".join(f"- {t}" for t in s["key_terms"]) + "\n\n"
-        if s.get("citations"): t += "## References\n" + "\n".join(f"[{i+1}] {c}" for i, c in enumerate(s["citations"][:20])) + "\n\n"
+        if s.get("citations"): t += "## References\n" + "\n".join(f"[{i+1}] {c}" for i, c in enumerate(cites[:20])) + "\n\n"
         st.download_button("📄 TXT", t, f"{sid}.txt", use_container_width=True)
     with col3:
         m = f"# {s['title']}\n\n## Summary\n{s['summary']}\n\n"
@@ -491,7 +491,7 @@ def show_paper(s, show_chat=True):
         if s.get("practical_implications"): m += f"## Practical Implications\n{s['practical_implications']}\n\n"
         if s.get("conclusion"): m += f"## Conclusion & Implications\n{s['conclusion']}\n\n"
         if s.get("key_terms"): m += "## Key Terms\n" + "\n".join(f"- {t}" for t in s["key_terms"]) + "\n\n"
-        if s.get("citations"): m += "## References\n" + "\n".join(f"[{i+1}] {c}" for i, c in enumerate(s["citations"][:20])) + "\n\n"
+        if s.get("citations"): m += "## References\n" + "\n".join(f"[{i+1}] {c}" for i, c in enumerate(cites[:20])) + "\n\n"
         st.download_button("📝 Markdown", m, f"{sid}.md", use_container_width=True)
     with col4:
         resp = api_export(sid)
