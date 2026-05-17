@@ -709,30 +709,68 @@ class AskInput(BaseModel):
 @app.post("/ask/{sid}")
 def ask_paper(sid: str, body: AskInput):
     with sqlite3.connect(DB_PATH) as conn:
-        r = conn.execute("SELECT title, source_text, summary, key_findings, methodology FROM summaries WHERE id=?", (sid,)).fetchone()
+        r = conn.execute("""SELECT title, source_text, summary, methodology,
+            key_findings, research_gaps, future_directions,
+            strengths, weaknesses, conclusion, citations, key_terms
+            FROM summaries WHERE id=?""", (sid,)).fetchone()
     if not r: raise HTTPException(404, "Paper not found")
     title, paper_text = r[0], r[1] or ""
-    summary, findings, methodology = r[2] or "", r[3] or "[]", r[4] or ""
-    if not paper_text.strip():
-        raise HTTPException(400, "No source text available for this paper")
+    summary, methodology = r[2] or "", r[3] or ""
+    if not paper_text.strip() and not summary.strip():
+        raise HTTPException(400, "No content available for this paper")
     def j(v):
         try: return json.loads(v) if isinstance(v, str) else v
         except: return []
-    findings_str = "\n".join(f"- {f}" for f in j(findings)[:5])
-    context_words = paper_text.split()
-    context = " ".join(context_words[-3000:]) if len(context_words) > 3000 else paper_text
-    prompt = f"""You are analyzing the research paper "{title}" for an MPhil/PhD student.
+    ctx = {
+        "title": title,
+        "summary": summary,
+        "methodology": methodology,
+        "key_findings": j(r[4]) if len(r) > 4 else [],
+        "research_gaps": j(r[5]) if len(r) > 5 else [],
+        "future_directions": j(r[6]) if len(r) > 6 else [],
+        "strengths": j(r[7]) if len(r) > 7 else [],
+        "weaknesses": j(r[8]) if len(r) > 8 else [],
+        "conclusion": r[9] if len(r) > 9 and r[9] else "",
+        "citations": j(r[10]) if len(r) > 10 else [],
+        "key_terms": j(r[11]) if len(r) > 11 else [],
+    }
+    def fmt_list(items, label):
+        if not items: return ""
+        lines = "\n".join(f"  • {x}" for x in items[:12])
+        return f"\n{label}:\n{lines}"
+    kb = f"""## Paper: {title}
 
-Paper summary: {summary[:500]}
-Key findings: {findings_str}
-Methodology: {methodology[:300]}
+## Summary
+{ctx['summary']}
 
-Paper full text (last part):
-{context}
+## Methodology
+{ctx['methodology']}
+{fmt_list(ctx['key_findings'], '## Key Findings')}
+{fmt_list(ctx['research_gaps'], '## Research Gaps')}
+{fmt_list(ctx['future_directions'], '## Future Directions')}
+{fmt_list(ctx['strengths'], '## Strengths')}
+{fmt_list(ctx['weaknesses'], '## Weaknesses')}
 
-Question: {body.question}
+## Conclusion
+{ctx['conclusion']}
+{fmt_list(ctx['key_terms'][:20], '## Key Terms')}"""
+    if ctx["citations"]:
+        cit_lines = "\n".join(f"  [{i+1}] {c[:200]}" for i, c in enumerate(ctx["citations"][:15]))
+        kb += f"\n\n## References\n{cit_lines}"
+    if paper_text.strip():
+        words = paper_text.split()
+        tail = " ".join(words[-2000:]) if len(words) > 2000 else paper_text
+        kb += f"\n\n## Paper Excerpt\n{tail[:5000]}"
+    prompt = f"""You are an MPhil/PhD research assistant answering questions about the paper below.
 
-Answer based ONLY on the paper content above. Be specific, cite evidence, and give detailed academic analysis. If the paper doesn't contain the answer, say so."""
+Use ONLY the provided paper content. Be thorough, precise, and cite which section your answer comes from. If the paper doesn't contain enough information, clearly state what is missing.
+
+{body.question}
+
+---
+
+Paper Knowledge Base:
+{kb}"""
     try:
         raw = ai_chat(prompt)
         return {"answer": raw, "question": body.question}

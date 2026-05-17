@@ -492,17 +492,18 @@ def show_paper(s, show_chat=True):
         st.markdown("<div class='section-heading'><span class='icon'>💬</span> Ask the Paper</div>", unsafe_allow_html=True)
         if "chat_history" not in st.session_state:
             st.session_state.chat_history = []
-        # Show chat history with avatars
         for msg in st.session_state.chat_history:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
-        # Chat input (resets automatically after submit)
         q = st.chat_input("Ask a question about this paper...", key=f"ask_{s['id']}")
         if q:
             st.session_state.chat_history.append({"role": "user", "content": q})
-            with st.spinner(""):
+            with st.spinner("🤔 Analyzing..."):
                 answer = api_ask(s["id"], q)
-            st.session_state.chat_history.append({"role": "assistant", "content": answer})
+            if answer.startswith("Error:") or answer.startswith("Connection"):
+                st.error(answer)
+            else:
+                st.session_state.chat_history.append({"role": "assistant", "content": answer})
             st.rerun()
 
 with tab2:
