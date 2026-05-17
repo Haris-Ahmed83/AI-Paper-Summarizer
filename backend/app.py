@@ -287,7 +287,15 @@ def extract_citations(text: str) -> list:
                 content += f' <a href="{raw_doi}" style="color:var(--accent);font-size:12px;text-decoration:none;white-space:nowrap;">[DOI]</a>'
             references.append(content)
         i += 2
-    return references[:20] if references else []
+    # Deduplicate by normalized content
+    seen = {}
+    deduped = []
+    for ref in references:
+        key = re.sub(r'<[^>]+>', '', ref).strip().lower()[:100]
+        if key not in seen:
+            seen[key] = True
+            deduped.append(ref)
+    return deduped[:20]
 
 def clean_citations_with_ai(citations: list) -> list:
     """Use AI to clean and fix spacing in extracted references."""
@@ -300,11 +308,13 @@ def clean_citations_with_ai(citations: list) -> list:
 References:
 {block}"""
         resp = ai_chat(prompt)
+        skip_phrases = ["here is the list","here are the","formatting adjustments","as requested","please note","the following","certainly","absolutely","i'll","i have","sure","of course","let me","below is","above is"]
         cleaned = []
         for line in resp.strip().split("\n"):
             line = re.sub(r'^\d+[\.\)]\s*', '', line).strip()
-            if line and len(line) > 30:
-                cleaned.append(line)
+            if not line or len(line) <= 30: continue
+            if any(p in line.lower() for p in skip_phrases): continue
+            cleaned.append(line)
         if len(cleaned) >= len(citations) // 2:
             return cleaned[:len(citations)]
     except:
