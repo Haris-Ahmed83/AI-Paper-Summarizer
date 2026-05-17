@@ -43,11 +43,22 @@ for i in range(2, 10):
     k = os.environ.get(f"GROK_API_KEY_{i}")
     if k: GROK_KEYS.append(k.strip())
 
-if not GEMINI_KEYS and not GROK_KEYS:
-    raise RuntimeError("At least one API key required: GEMINI_API_KEY or GROK_API_KEY")
+# Groq keys (groq.com - different from Grok/xAI)
+GROQ_KEYS = [k.strip() for k in (
+    os.environ.get("GROQ_API_KEYS") or
+    os.environ.get("GROQ_API_KEY") or
+    ""
+).split(",") if k.strip()]
+for i in range(2, 10):
+    k = os.environ.get(f"GROQ_API_KEY_{i}")
+    if k: GROQ_KEYS.append(k.strip())
+
+if not GEMINI_KEYS and not GROK_KEYS and not GROQ_KEYS:
+    raise RuntimeError("At least one API key required: GEMINI_API_KEY, GROK_API_KEY, or GROQ_API_KEY")
 
 GEMINI_MODEL = "gemini-2.5-flash"
 GROK_MODEL = os.environ.get("GROK_MODEL", "grok-3-mini")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", "50"))
 CHUNK_SIZE = 5000
 
@@ -82,12 +93,14 @@ def init_db():
             except: pass
 init_db()
 
-# ─── Multi-Provider AI Call (Gemini + Grok) ───
+# ─── Multi-Provider AI Call (Gemini + Grok + Groq) ───
 PROVIDERS = []
 for k in GEMINI_KEYS:
     PROVIDERS.append({"type":"gemini","key":k,"model":GEMINI_MODEL})
 for k in GROK_KEYS:
     PROVIDERS.append({"type":"grok","key":k,"model":GROK_MODEL})
+for k in GROQ_KEYS:
+    PROVIDERS.append({"type":"groq","key":k,"model":GROQ_MODEL})
 
 _provider_idx = 0
 def ai_chat(prompt: str) -> str:
@@ -130,6 +143,24 @@ def ai_chat(prompt: str) -> str:
                 choices = data.get("choices", [])
                 if not choices:
                     raise Exception("Empty Grok response")
+                return choices[0].get("message",{}).get("content","")
+
+            elif p["type"] == "groq":
+                url = "https://api.groq.com/openai/v1/chat/completions"
+                headers = {"Authorization": f"Bearer {p['key']}", "Content-Type": "application/json"}
+                payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096}
+                resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
+                if resp.status_code == 429:
+                    last_err = "QUOTA_EXCEEDED"; continue
+                if resp.status_code != 200:
+                    err = resp.text[:300]
+                    if "quota" in err.lower() or "rate" in err.lower():
+                        last_err = "QUOTA_EXCEEDED"; continue
+                    raise Exception(f"Groq error ({resp.status_code}): {err}")
+                data = resp.json()
+                choices = data.get("choices", [])
+                if not choices:
+                    raise Exception("Empty Groq response")
                 return choices[0].get("message",{}).get("content","")
         except Exception as e:
             last_err = str(e)
