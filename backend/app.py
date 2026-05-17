@@ -577,9 +577,23 @@ def parse_advanced_summary(raw: str) -> dict:
         if w_m:
             result["weaknesses"] = [x.strip().lstrip("•-*✦").strip()
                                     for x in w_m.group(1).split("\n") if x.strip() and len(x.strip()) > 8]
+    # Parse title from response if present
+    t_m = re.search(r"## TITLE\s*\n(.*?)(?=\n## [A-Z]|\Z)", raw, re.DOTALL | re.IGNORECASE)
+    if t_m:
+        result["ai_title"] = t_m.group(1).strip()
+    # Parse references from response
+    r_m = re.search(r"## REFERENCES\s*\n(.*?)(?=\n## [A-Z]|\Z)", raw, re.DOTALL | re.IGNORECASE)
+    if r_m:
+        refs = []
+        for line in r_m.group(1).strip().split("\n"):
+            line = re.sub(r'^\d+[\.\)]\s*', '', line).strip()
+            if line and len(line) > 30:
+                refs.append(line)
+        if refs:
+            result["ai_citations"] = refs
     return result
 
-# ─── AI Summary (Advanced) ───
+# ─── AI Summary (Single-pass: title + analysis + refs in 1 call) ───
 def generate_summary(text: str, lang: str = "english", stype: str = "detailed") -> dict:
     lang_inst = {"english":"Respond in English only.","urdu":"اردو میں جواب دیں۔","both":"Respond in both English and Urdu."}.get(lang, "Respond in English only.")
     type_map = {
@@ -589,28 +603,22 @@ def generate_summary(text: str, lang: str = "english", stype: str = "detailed") 
     }
     depth = type_map.get(stype, "detailed academic analysis")
 
-    # More text for better analysis — llama-3.3-70b has 128K context
     MAX_CHARS = 12000
     if len(text) > MAX_CHARS:
         intro = text[:4000]
         middle = text[4000:MAX_CHARS]
         text = intro + "\n\n" + middle
+    corpus = text[:MAX_CHARS]
 
+    # Quick regex title for prompt context (AI will verify/correct it)
     title = extract_title(text)
-    if title == "Research Paper" or len(title) > 150 or '[' in title or title.startswith(("This ","The ")):
-        ai_title = extract_title_via_ai(text)
-        if ai_title != "Research Paper": title = ai_title
 
     if stype == "bullet":
-        corpus = text[:8000]
         prompt = f"""## Paper: {title}
-{depth}.
-{lang_inst}
-
+{depth}. {lang_inst}
 Use ONLY the text below. Be specific with numbers, datasets, models.
-
 TEXT:
-{corpus}"""
+{corpus[:8000]}"""
         raw = ai_chat(prompt, system_prompt="You are an expert academic analyst. Extract bullet points only.")
         return {"title": title, "summary": raw, "methodology": "", "key_findings": [],
                 "research_gaps": [], "future_directions": [], "strengths": [],
@@ -619,7 +627,6 @@ TEXT:
                 "research_objective": "", "novelty": "", "practical_implications": "",
                 "key_takeaways": []}
 
-    corpus = text[:MAX_CHARS]
     prompt = f"""You are an expert academic research analyst with PhD-level expertise. Analyze the following research paper and provide a {depth}. {lang_inst}
 
 STRICT RULES:
@@ -629,6 +636,9 @@ STRICT RULES:
 - Provide concrete, cited evidence for each claim.
 
 Provide your analysis in this EXACT structure:
+
+## TITLE
+Extract the MAIN paper/article/editorial title only. NOT the journal name, NOT the special issue name, NOT section headings. If title looks like "Special Issue" or "Edition" — that is WRONG, find the actual paper title.
 
 ## SUMMARY
 Write a comprehensive 150-200 word paragraph covering: what this paper is about, its core contribution, and why it matters academically.
@@ -647,29 +657,25 @@ List 4-6 numbered findings with specific statistics, percentages, or quantitativ
 
 ## CRITICAL ANALYSIS
 ### Strengths (2-3 points)
-- What does this paper do exceptionally well?
-
 ### Weaknesses / Limitations (2-3 points)
-- What are the methodological gaps or limitations?
-
-### Novelty Assessment
-- What is genuinely new about this research? (1-2 sentences)
+### Novelty Assessment (1-2 sentences)
 
 ## RESEARCH GAPS IDENTIFIED
-List 2-3 specific gaps this paper itself acknowledges OR that you identify from the methodology.
+List 2-3 specific gaps.
 
 ## FUTURE DIRECTIONS
-List 3-4 specific, actionable future research directions based on the paper's findings.
+List 3-4 specific, actionable future research directions.
 
 ## PRACTICAL IMPLICATIONS
-Who benefits from this research and how? (researchers, practitioners, policymakers, students)
+Who benefits from this research and how?
 
 ## CONCLUSION & IMPLICATIONS
-Write a 100-150 word paragraph synthesizing the paper's contribution to the field.
+Write a 100-150 word paragraph.
+
+## REFERENCES
+Extract ALL academic references from the END of the paper text below. Return as a numbered list. Include authors, title, journal, year, DOI if present.
 
 ---
-PAPER TITLE: {title}
-
 PAPER TEXT:
 {corpus}"""
 
@@ -679,9 +685,9 @@ PAPER TEXT:
         raise
 
     data = parse_advanced_summary(raw)
-    data["title"] = title
-    data["citations"] = extract_references_via_ai(text) or clean_citations_with_ai(extract_citations(text))
-    data["summary"] = data.get("summary", "").strip() or title
+    data["title"] = data.get("ai_title", "") or title
+    data["citations"] = data.get("ai_citations", []) or clean_citations_with_ai(extract_citations(text))
+    data["summary"] = data.get("summary", "").strip() or data["title"]
     data["methodology"] = data.get("methodology", "")
     data["conclusion"] = data.get("conclusion", "")
     data["difficulty_level"] = "Intermediate"
