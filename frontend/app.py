@@ -139,16 +139,29 @@ def theme_css(dark: bool):
 def api_summarize(file, lang: str, stype: str) -> dict:
     try:
         r = requests.post(f"{API_URL}/summarize", files={"file": (file.name, file, "application/pdf")}, data={"language": lang, "summary_type": stype}, timeout=180)
-        return r.json() if r.status_code == 200 else {"error": r.json().get("detail", f"HTTP {r.status_code}")}
+        return r.json() if r.status_code == 200 else {"error": _fmt_err(r)}
     except Exception as e:
         return {"error": f"Connection failed: {str(e)}"}
 
 def api_summarize_url(url: str, lang: str, stype: str) -> dict:
     try:
         r = requests.post(f"{API_URL}/summarize-url", json={"url": url, "language": lang, "summary_type": stype}, timeout=180)
-        return r.json() if r.status_code == 200 else {"error": r.json().get("detail", f"HTTP {r.status_code}")}
+        return r.json() if r.status_code == 200 else {"error": _fmt_err(r)}
     except Exception as e:
         return {"error": f"Connection failed: {str(e)}"}
+
+def _fmt_err(r) -> str:
+    try:
+        detail = r.json().get("detail", "")
+        if "BLOCKED_PUBLISHER" in detail:
+            return detail.replace("BLOCKED_PUBLISHER: ", "🔒 ")
+        if "403" in detail or "forbidden" in detail.lower():
+            return "🔒 This publisher blocks automated access. Try ArXiv/PubMed URLs or upload PDF directly."
+        if "429" in detail or "quota" in detail.lower() or "rate limit" in detail.lower():
+            return "⏳ API limit reached. All providers are out of quota. Try again in 15-30 minutes."
+        return detail or f"HTTP {r.status_code}"
+    except:
+        return f"HTTP {r.status_code}"
 
 def api_history():
     st.session_state.history = _cached_history()
@@ -299,7 +312,8 @@ with tab1:
                     st.rerun()
     else:
         st.markdown("### Enter URL")
-        url = st.text_input("Paste research paper / article URL", placeholder="https://example.com/paper", label_visibility="collapsed")
+        url = st.text_input("Paste research paper / article URL", placeholder="https://arxiv.org/abs/...", label_visibility="collapsed")
+        st.markdown('<p class="meta" style="margin:4px 0 8px;">💡 Supported: <strong>ArXiv</strong>, <strong>PubMed</strong>, PubMed Central. Most publisher sites (MDPI, Elsevier, Springer) block automated access — upload PDF instead.</p>', unsafe_allow_html=True)
 
         if url:
             st.markdown(f"""
