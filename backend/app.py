@@ -260,12 +260,41 @@ def fetch_url_text(url: str) -> str:
     raise Exception(f"Failed to fetch URL after multiple attempts: {last_err}")
 
 def parse_json_from_text(raw: str) -> dict:
-    raw = raw.strip().replace("```json", "").replace("```", "").strip()
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start != -1 and end != -1:
-        raw = raw[start:end+1]
-    return json.loads(raw)
+    """Try JSON parse, fall back to section-header extraction."""
+    # Direct JSON attempt
+    cleaned = raw.strip().replace("```json", "").replace("```", "").strip()
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end > start:
+        try:
+            return json.loads(cleaned[start:end+1])
+        except:
+            pass
+    # Section-header fallback: extract by headers
+    result = {}
+    sections = {
+        "summary": r"##?\s*Summary\s*\n(.+?)(?=\n##|\Z)",
+        "methodology": r"##?\s*Methodology\s*\n(.+?)(?=\n##|\Z)",
+        "key_findings": r"##?\s*Key Findings?\s*\n(.+?)(?=\n##|\Z)",
+        "research_gaps": r"##?\s*Research Gaps?\s*\n(.+?)(?=\n##|\Z)",
+        "future_directions": r"##?\s*Future Directions?\s*\n(.+?)(?=\n##|\Z)",
+        "strengths": r"##?\s*Strengths?\s*\n(.+?)(?=\n##|\Z)",
+        "weaknesses": r"##?\s*Weaknesses?\s*\n(.+?)(?=\n##|\Z)",
+        "conclusion": r"##?\s*Conclusion\s*\n(.+?)(?=\n##|\Z)",
+        "difficulty_level": r"(?:Difficulty|Level)[:\s]+(Beginner|Intermediate|Advanced)",
+        "key_points": r"##?\s*Key Points?\s*\n(.+?)(?=\n##|\Z)",
+    }
+    for key, pat in sections.items():
+        m = re.search(pat, raw, re.DOTALL | re.IGNORECASE)
+        if m:
+            val = m.group(1).strip()
+            if key in ("key_findings", "research_gaps", "future_directions", "strengths", "weaknesses", "key_points"):
+                result[key] = [x.strip().lstrip("-*") for x in val.split("\n") if x.strip() and len(x.strip()) > 5]
+            elif key == "difficulty_level":
+                result[key] = val
+            else:
+                result[key] = val
+    return result
 
 # ─── AI Summary ───
 def generate_summary(text: str, lang: str = "english", stype: str = "detailed") -> dict:
@@ -277,32 +306,52 @@ def generate_summary(text: str, lang: str = "english", stype: str = "detailed") 
     # Extract title from full text
     title = extract_title(text)
 
-    # Process first chunk with title
-    first_prompt = f"""You are an MPhil/PhD research assistant. Analyze this research paper and produce a structured analysis.
+    # Process first chunk
+    first_prompt = f"""You are an MPhil/PhD research assistant analyzing a research paper.
 
 Paper Title: {title}
-
 {type_inst}
 {lang_inst}
 
-Extract and return ONLY valid JSON with these exact fields:
-{{
-  "summary": "coherent paragraph summarizing this section",
-  "methodology": "research design, methods, sample",
-  "key_findings": ["finding 1", "finding 2"],
-  "research_gaps": ["gap 1"],
-  "future_directions": ["direction 1"],
-  "strengths": ["strength 1"],
-  "weaknesses": ["weakness 1"],
-  "conclusion": "authors' conclusion",
-  "difficulty_level": "Beginner/Intermediate/Advanced",
-  "key_terms": ["term: definition"],
-  "key_points": ["bullet point 1"]
-}}
+Analyze the text below and provide a structured analysis with these sections:
+
+## Summary
+(A 3-5 sentence paragraph explaining the core content)
+
+## Methodology
+(Research design, methods, sample — or say "Not specified" if unclear)
+
+## Key Findings
+(- Key finding 1
+- Key finding 2
+- Key finding 3)
+
+## Research Gaps
+(- Gap 1
+- Gap 2)
+
+## Future Directions
+(- Direction 1
+- Direction 2)
+
+## Strengths
+(- Strength 1)
+
+## Weaknesses
+(- Weakness 1)
+
+## Conclusion
+(Lessons and implications)
+
+## Difficulty
+(Beginner, Intermediate, or Advanced)
+
+## Key Points
+(- Bullet 1
+- Bullet 2)
 
 TEXT:
-{chunks[0]}
-Return ONLY the JSON object. No markdown, no explanation."""
+{chunks[0]}"""
 
     all_data = {"summary":"","methodology":"","key_findings":[],"research_gaps":[],"future_directions":[],"strengths":[],"weaknesses":[],"conclusion":"","difficulty_level":"Intermediate","key_terms":[],"key_points":[],"citations":[]}
 
@@ -312,12 +361,23 @@ Return ONLY the JSON object. No markdown, no explanation."""
         else:
             prompt = f"""Continue analyzing PART {idx+1}/{len(chunks)} of this research paper.
 
-Extract and return ONLY valid JSON:
-{{"summary":"...", "methodology":"...", "key_findings":["..."], "research_gaps":["..."], "future_directions":["..."], "strengths":["..."], "weaknesses":["..."], "conclusion":"...", "difficulty_level":"...", "key_terms":["...: ..."], "key_points":["..."]}}
+Provide structured analysis:
+
+## Summary
+## Methodology
+## Key Findings
+(- list items)
+## Research Gaps
+## Future Directions
+## Strengths
+## Weaknesses
+## Conclusion
+## Difficulty
+(Beginner, Intermediate, or Advanced)
+## Key Points
 
 TEXT:
-{chunk}
-Return ONLY the JSON object."""
+{chunk}"""
 
         try:
             raw = ai_chat(prompt)
@@ -339,19 +399,43 @@ Return ONLY the JSON object."""
 
     # Merge chunks for multi-chunk papers
     if len(chunks) > 1 and stype != "bullet":
-        parts = all_data["summary"][:3000] if len(all_data["summary"]) > 3000 else all_data["summary"]
-        merge_prompt = f"""Merge these partial findings into ONE complete research analysis for an MPhil/PhD student.
+        findings_str = "\n".join(f"- {f}" for f in all_data['key_findings'][:8]) if all_data['key_findings'] else "None"
+        gaps_str = "\n".join(f"- {g}" for g in all_data['research_gaps'][:5]) if all_data['research_gaps'] else "None"
+        future_str = "\n".join(f"- {f}" for f in all_data['future_directions'][:5]) if all_data['future_directions'] else "None"
+        strengths_str = "\n".join(f"- {s}" for s in all_data['strengths'][:5]) if all_data['strengths'] else "None"
+        weaknesses_str = "\n".join(f"- {w}" for w in all_data['weaknesses'][:5]) if all_data['weaknesses'] else "None"
+        merge_prompt = f"""You are an MPhil/PhD research assistant. Merge these partial findings into ONE complete analysis for the paper "{title}". Remove redundancy. Keep the most valuable content.
 
-Title: {title}
-Findings: {chr(10).join(f'- {f}' for f in all_data['key_findings'][:8]) if all_data['key_findings'] else 'N/A'}
-Gaps: {chr(10).join(f'- {g}' for g in all_data['research_gaps'][:5]) if all_data['research_gaps'] else 'N/A'}
-Future: {chr(10).join(f'- {f}' for f in all_data['future_directions'][:5]) if all_data['future_directions'] else 'N/A'}
-Methodology: {all_data['methodology'][:500] if all_data['methodology'] else 'N/A'}
-Summary parts: {parts[:2000]}
+Key Findings collected:
+{findings_str}
 
-Return ONLY valid JSON:
-{{"summary":"master summary with all key info", "methodology":"", "key_findings":["..."], "research_gaps":["..."], "future_directions":["..."], "strengths":["..."], "weaknesses":["..."], "conclusion":"", "difficulty_level":"", "key_terms":["...: ..."], "key_points":["..."]}}
-Return ONLY the JSON object."""
+Research Gaps collected:
+{gaps_str}
+
+Future Directions collected:
+{future_str}
+
+Strengths:
+{strengths_str}
+
+Weaknesses:
+{weaknesses_str}
+
+Methodology note: {all_data['methodology'][:500] if all_data['methodology'] else 'Not extracted'}
+
+Provide the final merged analysis with these sections:
+
+## Summary
+## Methodology
+## Key Findings
+## Research Gaps
+## Future Directions
+## Strengths
+## Weaknesses
+## Conclusion
+## Difficulty
+(Beginner, Intermediate, or Advanced)
+## Key Points"""
         try:
             raw = ai_chat(merge_prompt)
             merged = parse_json_from_text(raw)

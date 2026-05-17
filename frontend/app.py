@@ -413,8 +413,11 @@ def show_paper(s, show_chat=True):
     cites = s.get("citations", [])
     if cites:
         st.markdown("<div class='section-heading'><span class='icon'>📚</span> References & Citations</div>", unsafe_allow_html=True)
-        for i, c in enumerate(cites[:10]):
-            st.markdown(f'<div class="card" style="padding:10px 16px;margin:4px 0;"><small>[{i+1}] {c}</small></div>', unsafe_allow_html=True)
+        cites_html = '<div class="card" style="padding:12px 16px;">'
+        for i, c in enumerate(cites[:15], 1):
+            cites_html += f'<p style="margin:4px 0;font-size:13px;line-height:1.6;"><strong>[{i}]</strong> {c}</p>'
+        cites_html += "</div>"
+        st.markdown(cites_html, unsafe_allow_html=True)
 
     # Reading Time + Complexity
     wc = len((s.get("summary", "") or "").split())
