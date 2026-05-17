@@ -237,25 +237,37 @@ def extract_citations(text: str) -> list:
     if ref_start is not None:
         refs = []
         current = ""
+        disclaimer_keywords = ("disclaimer", "publisher", "©", "conflict", "funding", "institutional review", "data availability")
         for l in lines[ref_start+1:]:
-            if not l.strip():
+            stripped = l.strip()
+            # Stop at disclaimer/legal text
+            if any(stripped.lower().startswith(k) for k in disclaimer_keywords):
+                if current.strip(): refs.append(current.strip())
+                break
+            if not stripped:
                 if current.strip(): refs.append(current.strip())
                 current = ""
                 continue
-            if re.match(r'^\[\d+\]', l.strip()) and current.strip():
-                refs.append(current.strip())
-                current = l.strip()
+            # New numbered reference
+            if re.match(r'^\[\d+\]', stripped):
+                if current.strip(): refs.append(current.strip())
+                current = stripped
             else:
-                current += " " + l.strip()
+                current += " " + stripped
         if current.strip(): refs.append(current.strip())
-        # Clean up incomplete refs
+        # Clean: remove standalone numbers/brackets, short entries
         clean = []
         for r in refs:
-            r = r.strip()
-            if len(r) > 20 and re.search(r'\d{4}', r):
-                clean.append(r)
-        return clean[:15] if clean else []
-    # Fallback: find DOI/URL patterns in full text
+            r = re.sub(r'\s+', ' ', r).strip()
+            # Skip if just a number in brackets
+            if re.match(r'^\[\d+\]$', r): continue
+            if len(r) > 30 and re.search(r'\d{4}', r):
+                # Link DOIs
+                r = re.sub(r'(https?://doi\.org/\S+)', r'<a href="\1" target="_blank">\1</a>', r)
+                r = re.sub(r'\[CrossRef\]|\[PubMed\]|\[PubMed Central\]', '', r)
+                clean.append(r.strip())
+        return clean[:20] if clean else []
+    # Fallback: find DOI/URL patterns
     pattern = r'(?:https?://doi\.org/\S+|\(?\d{4}\)?\.\s+[A-Z][^.]*?Journal[^.]*\.)'
     matches = re.findall(pattern, text)
     return [m.strip() for m in matches[:10]] if matches else []
