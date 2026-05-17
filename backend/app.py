@@ -188,30 +188,38 @@ class HistoryItem(BaseModel):
 
 # ─── PDF Processing ───
 def extract_text_pdf(path: str) -> str:
+    text = ""
     try:
         import pdfplumber
-        text = ""
         with pdfplumber.open(path) as pdf:
             for page in pdf.pages:
                 page_text = page.extract_text()
                 if page_text:
                     text += page_text + "\n"
         if len(text.strip()) > 100:
+            text = _clean_extracted_text(text)
             return text.strip()
     except Exception:
         pass
     # Fallback to PyPDF2
     try:
-        text = ""
         with open(path, "rb") as f:
             reader = PyPDF2.PdfReader(f)
             for page in reader.pages:
                 t = page.extract_text()
                 if t:
                     text += t + "\n"
+        text = _clean_extracted_text(text)
         return text.strip()
     except Exception as e:
         raise Exception(f"PDF extraction failed: {e}")
+
+def _clean_extracted_text(text: str) -> str:
+    # Fix missing spaces between camelCase words (PDF artifact)
+    text = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', text)
+    text = re.sub(r'(?<=[a-z])(?=\d)', ' ', text)
+    text = re.sub(r'(?<=\d)(?=[A-Z])', ' ', text)
+    return text
 
 def extract_text_txt(path: str) -> str:
     with open(path, "r", encoding="utf-8", errors="ignore") as f:
@@ -255,17 +263,29 @@ def extract_citations(text: str) -> list:
             else:
                 current += " " + stripped
         if current.strip(): refs.append(current.strip())
-        # Clean: remove standalone numbers/brackets, short entries
+        # Deduplicate + clean
+        seen = set()
         clean = []
         for r in refs:
             r = re.sub(r'\s+', ' ', r).strip()
-            # Skip if just a number in brackets
             if re.match(r'^\[\d+\]$', r): continue
+            norm = re.sub(r'\s+', '', r.lower().strip("[] "))
+            if norm in seen: continue
+            seen.add(norm)
             if len(r) > 30 and re.search(r'\d{4}', r):
-                # Link DOIs
-                r = re.sub(r'(https?://doi\.org/\S+)', r'<a href="\1" target="_blank">\1</a>', r)
-                r = re.sub(r'\[CrossRef\]|\[PubMed\]|\[PubMed Central\]', '', r)
-                clean.append(r.strip())
+                # Strip raw URLs from body, link DOIs separately
+                raw_doi = ""
+                doi_m = re.search(r'(https?://doi\.org/\S+)', r)
+                if doi_m:
+                    raw_doi = doi_m.group(1)
+                    r = re.sub(r'https?://doi\.org/\S+', '', r)
+                r = re.sub(r'https?://\S+', '', r)
+                r = re.sub(r'\s+', ' ', r).strip()
+                r = re.sub(r'[,;:\s]+$', '', r)
+                if raw_doi:
+                    r = re.sub(r'DOI[:\s]*$', '', r).strip()
+                    r += f' <a href="{raw_doi}" style="color:var(--accent);font-size:12px;text-decoration:none;white-space:nowrap;">[DOI]</a>'
+                clean.append(r)
         return clean[:20] if clean else []
     # Fallback: find DOI/URL patterns
     pattern = r'(?:https?://doi\.org/\S+|\(?\d{4}\)?\.\s+[A-Z][^.]*?Journal[^.]*\.)'

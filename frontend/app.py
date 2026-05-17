@@ -413,19 +413,12 @@ def show_paper(s, show_chat=True):
     cites = s.get("citations", [])
     if cites:
         st.markdown("<div class='section-heading'><span class='icon'>📚</span> References & Citations</div>", unsafe_allow_html=True)
-        cites_html = '<div class="card" style="padding:16px 20px;">'
+        cites_html = '<div class="card" style="padding:16px 18px;">'
         for i, c in enumerate(cites[:20], 1):
-            doi_link = ""
-            doi_match = re.search(r'(https?://doi\.org/\S+)', c)
-            if doi_match:
-                doi_link = f'<a href="{doi_match.group(1)}" target="_blank" style="color:var(--accent);font-size:12px;text-decoration:none;">🔗 DOI</a>'
-            cites_html += f'''<div style="padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;line-height:1.7;">
-                <div style="display:flex;gap:10px;align-items:flex-start;">
-                    <span style="min-width:28px;height:28px;border-radius:6px;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;">{i}</span>
-                    <div style="flex:1;">
-                        <span>{c}</span>
-                        <div style="margin-top:4px;">{doi_link}</div>
-                    </div>
+            cites_html += f'''<div style="padding:10px 0;border-bottom:1px solid var(--border);font-size:14px;line-height:1.7;">
+                <div style="display:flex;gap:12px;align-items:flex-start;">
+                    <span style="min-width:30px;height:30px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;">{i}</span>
+                    <div style="flex:1;">{c}</div>
                 </div>
             </div>'''
         cites_html += "</div>"
