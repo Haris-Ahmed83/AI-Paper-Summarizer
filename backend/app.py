@@ -59,7 +59,7 @@ if not GROQ_KEYS and not GROK_KEYS:
 GROK_MODEL = os.environ.get("GROK_MODEL", "grok-3-mini")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", "50"))
-CHUNK_SIZE = 5000
+CHUNK_SIZE = 3000
 
 UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -127,7 +127,7 @@ def ai_chat(prompt: str, retry: int = 2, system_prompt: str = "", temperature: f
         time.sleep(2 - elapsed)
     _LAST_CALL_TIME = time.time()
     errors = {}
-    wait_times = [15, 30, 60]
+    wait_times = [5, 15]
     for attempt in range(retry + 1):
         last_err = None
         for p in PROVIDERS:
@@ -135,8 +135,11 @@ def ai_chat(prompt: str, retry: int = 2, system_prompt: str = "", temperature: f
             if kid in _DEAD_PROVIDERS:
                 continue
             now = time.time()
-            if kid in _COOLDOWN and now - _COOLDOWN[kid] < 60:
-                continue
+            if kid in _COOLDOWN:
+                provider_type = p["type"]
+                wait = {"groq": 300, "grok": 120, "gemini": 60}.get(provider_type, 120)
+                if now - _COOLDOWN[kid] < wait:
+                    continue
             try:
                 if p["type"] == "grok":
                     url = "https://api.x.ai/v1/chat/completions"
@@ -187,8 +190,9 @@ def ai_chat(prompt: str, retry: int = 2, system_prompt: str = "", temperature: f
                     return choices[0].get("message",{}).get("content","")
 
                 elif p["type"] == "gemini":
+                    full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{p['model']}:generateContent?key={p['key']}"
-                    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                    payload = {"contents": [{"parts": [{"text": full_prompt}]}], "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens}}
                     resp = http_requests.post(url, json=payload, timeout=90)
                     if resp.status_code == 429:
                         last_err = f"gemini_quota"; errors[kid] = f"429"; _COOLDOWN[kid] = time.time(); continue
@@ -624,12 +628,8 @@ def generate_summary(text: str, lang: str = "english", stype: str = "detailed") 
     }
     depth = type_map.get(stype, "detailed academic analysis")
 
-    MAX_CHARS = 12000
-    if len(text) > MAX_CHARS:
-        intro = text[:4000]
-        middle = text[4000:MAX_CHARS]
-        text = intro + "\n\n" + middle
-    corpus = text[:MAX_CHARS]
+    words = text.split()
+    corpus = " ".join(words[:1800])
 
     # Quick regex title for prompt context (AI will verify/correct it)
     title = extract_title(text)
