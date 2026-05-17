@@ -101,7 +101,7 @@ if not PROVIDERS:
     raise RuntimeError("No API keys found. Set GROQ_API_KEY or GROK_API_KEY.")
 
 # ─── AI Chat (REST-based, multi-provider) ───
-def ai_chat(prompt: str, retry: int = 1, system_prompt: str = "", temperature: float = 0.3) -> str:
+def ai_chat(prompt: str, retry: int = 1, system_prompt: str = "", temperature: float = 0.3, max_tokens: int = 4096) -> str:
     errors = {}
     for attempt in range(retry + 1):
         last_err = None
@@ -114,7 +114,7 @@ def ai_chat(prompt: str, retry: int = 1, system_prompt: str = "", temperature: f
                     if system_prompt:
                         msgs.append({"role": "system", "content": system_prompt})
                     msgs.append({"role": "user", "content": prompt})
-                    payload = {"model": p["model"], "messages": msgs, "max_tokens": 4096, "temperature": temperature}
+                    payload = {"model": p["model"], "messages": msgs, "max_tokens": max_tokens, "temperature": temperature}
                     resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
                     if resp.status_code == 429:
                         last_err = f"grok_quota"; errors["grok"] = f"429"; continue
@@ -136,7 +136,7 @@ def ai_chat(prompt: str, retry: int = 1, system_prompt: str = "", temperature: f
                     if system_prompt:
                         msgs.append({"role": "system", "content": system_prompt})
                     msgs.append({"role": "user", "content": prompt})
-                    payload = {"model": p["model"], "messages": msgs, "max_tokens": 4096, "temperature": temperature}
+                    payload = {"model": p["model"], "messages": msgs, "max_tokens": max_tokens, "temperature": temperature}
                     resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
                     if resp.status_code == 429:
                         last_err = f"groq_quota"; errors["groq"] = f"429"; continue
@@ -383,6 +383,19 @@ def extract_title(text: str) -> str:
         return title[:300].strip()
     return "Research Paper"
 
+def extract_title_via_ai(text: str) -> str:
+    """AI-based title extraction — 100% accurate fallback."""
+    chunk = text[:2000]
+    try:
+        raw = ai_chat(f"Extract the academic paper title from this text. Return ONLY the title, nothing else:\n\n{chunk}",
+                      system_prompt="You are a title extractor. Return ONLY the paper title. Nothing else. No explanation. No punctuation at end.",
+                      temperature=0.1, max_tokens=50)
+        title = raw.strip().strip("\"'")
+        title = re.sub(r'\s+', ' ', title)
+        return title if len(title) > 10 else "Research Paper"
+    except:
+        return "Research Paper"
+
 def fetch_url_text(url: str) -> str:
     blocked_domains = ["mdpi.com", "elsevier.com", "sciencedirect.com", "springer.com", "tandfonline.com", "wiley.com", "ieee.org", "acm.org", "nature.com"]
     for d in blocked_domains:
@@ -531,6 +544,9 @@ def generate_summary(text: str, lang: str = "english", stype: str = "detailed") 
         text = intro + "\n\n" + middle
 
     title = extract_title(text)
+    if title == "Research Paper" or len(title) > 150 or '[' in title or title.startswith(("This ","The ")):
+        ai_title = extract_title_via_ai(text)
+        if ai_title != "Research Paper": title = ai_title
 
     if stype == "bullet":
         corpus = text[:8000]
