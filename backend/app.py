@@ -101,7 +101,7 @@ if not PROVIDERS:
     raise RuntimeError("No API keys found. Set GROQ_API_KEY or GROK_API_KEY.")
 
 # ─── AI Chat (REST-based, multi-provider) ───
-def ai_chat(prompt: str, retry: int = 1, system_prompt: str = "") -> str:
+def ai_chat(prompt: str, retry: int = 1, system_prompt: str = "", temperature: float = 0.3) -> str:
     errors = {}
     for attempt in range(retry + 1):
         last_err = None
@@ -114,7 +114,7 @@ def ai_chat(prompt: str, retry: int = 1, system_prompt: str = "") -> str:
                     if system_prompt:
                         msgs.append({"role": "system", "content": system_prompt})
                     msgs.append({"role": "user", "content": prompt})
-                    payload = {"model": p["model"], "messages": msgs, "max_tokens": 4096, "temperature": 0.3}
+                    payload = {"model": p["model"], "messages": msgs, "max_tokens": 4096, "temperature": temperature}
                     resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
                     if resp.status_code == 429:
                         last_err = f"grok_quota"; errors["grok"] = f"429"; continue
@@ -136,7 +136,7 @@ def ai_chat(prompt: str, retry: int = 1, system_prompt: str = "") -> str:
                     if system_prompt:
                         msgs.append({"role": "system", "content": system_prompt})
                     msgs.append({"role": "user", "content": prompt})
-                    payload = {"model": p["model"], "messages": msgs, "max_tokens": 4096, "temperature": 0.3}
+                    payload = {"model": p["model"], "messages": msgs, "max_tokens": 4096, "temperature": temperature}
                     resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
                     if resp.status_code == 429:
                         last_err = f"groq_quota"; errors["groq"] = f"429"; continue
@@ -296,6 +296,28 @@ def extract_citations(text: str) -> list:
             seen[key] = True
             deduped.append(ref)
     return deduped[:20]
+
+def extract_references_via_ai(text: str) -> list:
+    """Extract references using AI from the last part of the paper."""
+    last_chunk = text[-4000:] if len(text) > 4000 else text
+    prompt = f"""Extract ALL academic references from the text below. Format each reference as a proper numbered academic citation. Include: Authors, Title, Journal/Conference, Year, DOI/URL if present. Return ONLY the numbered list. No commentary, no extra text. If a reference is incomplete, include what is available.
+
+TEXT:
+{last_chunk}"""
+    try:
+        raw = ai_chat(prompt, system_prompt="You are an academic reference extractor. Return ONLY a clean numbered list of references. No commentary. No extra text.", temperature=0.1)
+        skip_phrases = ["here is","here are","the following","formatting","as requested","please note","i have","below is","list of","absolutely","certainly"]
+        refs = []
+        for line in raw.strip().split("\n"):
+            line = re.sub(r'^\d+[\.\)]\s*', '', line).strip()
+            if not line or len(line) < 40: continue
+            if any(p in line.lower() for p in skip_phrases): continue
+            refs.append(line)
+        if refs:
+            return refs[:20]
+    except:
+        pass
+    return []
 
 def clean_citations_with_ai(citations: list) -> list:
     """Use AI to clean and fix spacing in extracted references."""
@@ -570,7 +592,7 @@ PAPER TEXT:
 
     data = parse_advanced_summary(raw)
     data["title"] = title
-    data["citations"] = clean_citations_with_ai(extract_citations(text))
+    data["citations"] = extract_references_via_ai(text) or clean_citations_with_ai(extract_citations(text))
     data["summary"] = data.get("summary", "").strip() or title
     data["methodology"] = data.get("methodology", "")
     data["conclusion"] = data.get("conclusion", "")
