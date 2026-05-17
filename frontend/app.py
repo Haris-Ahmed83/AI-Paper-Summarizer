@@ -227,6 +227,13 @@ st.markdown(f"""
 
 # ─── Sidebar ───
 with st.sidebar:
+    # Provider status
+    try:
+        h = requests.get(f"{API_URL}/health", timeout=3).json()
+        st.caption(f"⚡ {h.get('providers','?')} providers · {h.get('gemini_keys','?')} Gemini · {h.get('groq_keys','?')} Groq")
+    except:
+        st.caption("⚡ connecting...")
+
     st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
 
     # Theme toggle
