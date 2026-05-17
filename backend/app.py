@@ -47,7 +47,7 @@ if not GROQ_KEYS and not GROK_KEYS:
     raise RuntimeError("At least one API key required: GROQ_API_KEY or GROK_API_KEY")
 
 GROK_MODEL = os.environ.get("GROK_MODEL", "grok-3-mini")
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", "50"))
 CHUNK_SIZE = 5000
 
@@ -101,7 +101,7 @@ def ai_chat(prompt: str, retry: int = 1) -> str:
                 if p["type"] == "grok":
                     url = "https://api.x.ai/v1/chat/completions"
                     headers = {"Authorization": f"Bearer {p['key']}", "Content-Type": "application/json"}
-                    payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 2048}
+                    payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096}
                     resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
                     if resp.status_code == 429:
                         last_err = f"grok_quota"; errors["grok"] = f"429"; continue
@@ -119,7 +119,7 @@ def ai_chat(prompt: str, retry: int = 1) -> str:
                 elif p["type"] == "groq":
                     url = "https://api.groq.com/openai/v1/chat/completions"
                     headers = {"Authorization": f"Bearer {p['key']}", "Content-Type": "application/json"}
-                    payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 2048}
+                    payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096}
                     resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
                     if resp.status_code == 429:
                         last_err = f"groq_quota"; errors["groq"] = f"429"; continue
@@ -409,9 +409,11 @@ def generate_summary(text: str, lang: str = "english", stype: str = "detailed") 
     lang_inst = {"english":"Write in English.","urdu":"Write in Urdu (اردو). Use Nastaliq style.","both":"Write first in English, then full Urdu translation below."}.get(lang, "Write in English.")
     type_inst = {"brief":"Give a concise overview in 3-4 sentences covering the core contribution only.","detailed":"Extract in-depth research content. Cover objectives, methodology, findings with data/stats, gaps, conclusions, critical analysis, future work, and key terminology.","bullet":"Extract only the most important findings as short bullet points (max 10)."}.get(stype, "Extract in-depth research content.")
 
-    # Truncate — llama-3.1-8b-instant has 8K context
-    if len(text) > 4000:
-        text = text[:4000]
+    # Truncate large PDFs — extract key sections
+    if len(text) > 10000:
+        intro = text[:3000]
+        middle = text[3000:10000]
+        text = intro + "\n\n" + middle
 
     chunks = chunk_text(text, CHUNK_SIZE)
 
