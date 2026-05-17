@@ -193,7 +193,7 @@ def extract_text_pdf(path: str) -> str:
         import pdfplumber
         with pdfplumber.open(path) as pdf:
             for page in pdf.pages:
-                page_text = page.extract_text(x_tolerance=1, y_tolerance=3, layout=True)
+                page_text = page.extract_text(x_tolerance=2, y_tolerance=2)
                 if page_text:
                     text += page_text + "\n"
         if len(text.strip()) > 100:
@@ -246,65 +246,50 @@ def chunk_text(text: str, size: int = CHUNK_SIZE) -> list:
     return [" ".join(words[i:i+size]) for i in range(0, len(words), size)]
 
 def extract_citations(text: str) -> list:
-    lines = text.split("\n")
-    # Find the references section
-    ref_start = None
-    for i, l in enumerate(lines):
-        if re.match(r'^(references|bibliography|works cited)\s*$', l.strip(), re.I):
-            ref_start = i
-            break
-    if ref_start is not None:
-        refs = []
-        current = ""
-        disclaimer_keywords = ("disclaimer", "publisher", "©", "conflict", "funding", "institutional review", "data availability")
-        for l in lines[ref_start+1:]:
-            stripped = l.strip()
-            if any(stripped.lower().startswith(k) for k in disclaimer_keywords):
-                if current.strip(): refs.append(current.strip())
-                break
-            if not stripped:
-                if current.strip(): refs.append(current.strip())
-                current = ""
-                continue
-            # New numbered reference: [1] or 1. format
-            if re.match(r'^\[\d+\]', stripped) or re.match(r'^\d+\.\s', stripped):
-                if current.strip(): refs.append(current.strip())
-                current = re.sub(r'^\[\d+\]\s*|^\d+\.\s*', '', stripped)
-            else:
-                current += " " + stripped
-        if current.strip(): refs.append(current.strip())
-        # Deduplicate + clean each ref
-        seen = set()
-        clean = []
-        for r in refs:
-            r = re.sub(r'\s+', ' ', r).strip()
-            norm = re.sub(r'\s+', '', r.lower().strip("[] "))
-            if norm in seen: continue
-            seen.add(norm)
-            if len(r) > 30 and re.search(r'\d{4}', r):
-                # Strip raw URLs from body, link DOIs separately
-                raw_doi = ""
-                doi_m = re.search(r'(https?://doi\.org/\S+)', r)
-                if doi_m:
-                    raw_doi = doi_m.group(1)
-                    r = re.sub(r'https?://doi\.org/\S+', '', r)
-                r = re.sub(r'https?://\S+', '', r)
-                r = re.sub(r'\s+', ' ', r).strip()
-                r = re.sub(r'[,;:\s]+$', '', r)
-                # Fix common reference artifacts
-                r = r.replace('[Cross Ref]', '[CrossRef]')
-                r = r.replace('[Pub Med]', '[PubMed]')
-                r = r.replace('[Pub Med Central]', '[PMC]')
-                r = re.sub(r'(?<=[a-zA-Z])\.(?=[A-Z][a-z])', '. ', r)
-                if raw_doi:
-                    r = re.sub(r'DOI[:\s]*$', '', r).strip()
-                    r += f' <a href="{raw_doi}" style="color:var(--accent);font-size:12px;text-decoration:none;white-space:nowrap;">[DOI]</a>'
-                clean.append(r)
-        return clean[:20] if clean else []
-    # Fallback: find DOI/URL patterns
-    pattern = r'(?:https?://doi\.org/\S+|\(?\d{4}\)?\.\s+[A-Z][^.]*?Journal[^.]*\.)'
-    matches = re.findall(pattern, text)
-    return [m.strip() for m in matches[:10]] if matches else []
+    """Extract references section from full text."""
+    match = re.search(r'(?:^|\n)(References|Bibliography)(.*)', text, re.DOTALL | re.IGNORECASE)
+    if not match:
+        pattern = r'(?:https?://doi\.org/\S+|\(?\d{4}\)?\.\s+[A-Z][^.]*?Journal[^.]*\.)'
+        matches = re.findall(pattern, text)
+        return [m.strip() for m in matches[:10]] if matches else []
+
+    refs_block = match.group(2).strip()
+    # Stop at disclaimer/legal text
+    refs_block = re.split(r'\n\s*(Disclaimer|Publisher|©|Conflict|Funding|Institutional Review|Data Availability)', refs_block)[0]
+
+    # Split numbered references: "1." or "[1]" format
+    parts = re.split(r'\n\s*(\d+)\.\s+', refs_block)
+    if len(parts) < 3:
+        parts = re.split(r'\n\s*\[\d+\]\s*', refs_block)
+        if len(parts) < 2:
+            return []
+
+    references = []
+    i = 1
+    while i < len(parts) - 1:
+        num = parts[i].strip()
+        content = parts[i+1].strip()
+        content = re.sub(r'\s+', ' ', content)
+        if len(content) > 30 and re.search(r'\d{4}', content):
+            # Strip raw URLs, link DOIs separately
+            raw_doi = ""
+            doi_m = re.search(r'(https?://doi\.org/\S+)', content)
+            if doi_m:
+                raw_doi = doi_m.group(1)
+                content = re.sub(r'https?://doi\.org/\S+', '', content)
+            content = re.sub(r'https?://\S+', '', content)
+            content = re.sub(r'\s+', ' ', content).strip()
+            content = re.sub(r'[,;:\s]+$', '', content)
+            content = content.replace('[Cross Ref]', '[CrossRef]')
+            content = content.replace('[Pub Med]', '[PubMed]')
+            content = content.replace('[Pub Med Central]', '[PMC]')
+            content = re.sub(r'(?<=[a-zA-Z])\.(?=[A-Z][a-z])', '. ', content)
+            if raw_doi:
+                content = re.sub(r'DOI[:\s]*$', '', content).strip()
+                content += f' <a href="{raw_doi}" style="color:var(--accent);font-size:12px;text-decoration:none;white-space:nowrap;">[DOI]</a>'
+            references.append(content)
+        i += 2
+    return references[:20] if references else []
 
 def clean_citations_with_ai(citations: list) -> list:
     """Use AI to clean and fix spacing in extracted references."""
