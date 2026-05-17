@@ -105,15 +105,11 @@ for k in GROK_KEYS:
 for k in GEMINI_KEYS:
     PROVIDERS.append({"type":"gemini","key":k,"model":GEMINI_MODEL})
 
-_provider_idx = 0
-
+# ─── AI Chat ───
 def ai_chat(prompt: str, retry: int = 3) -> str:
-    global _provider_idx, _quota_cooldown
     for attempt in range(retry + 1):
         last_err = None
-        for _ in range(len(PROVIDERS)):
-            p = PROVIDERS[_provider_idx % len(PROVIDERS)]
-            _provider_idx += 1
+        for p in PROVIDERS:  # Always start from Groq (index 0)
             try:
                 if p["type"] == "gemini":
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{p['model']}:generateContent?key={p['key']}"
