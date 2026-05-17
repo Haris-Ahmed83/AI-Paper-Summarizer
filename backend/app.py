@@ -322,7 +322,12 @@ References:
 def extract_title(text: str) -> str:
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     skip_prefixes = ("received:", "accepted:", "published:", "copyright:", "licensee", "editorial", "article", "open access", "creative commons", "cc by", "doi:", "correspondence", "submitted", "reviewed", "revised", "available")
+    author_chars = set('∗†‡◇♡♥@')
     for l in lines:
+        if any(c in l for c in author_chars):
+            continue
+        if '.com' in l.lower() or '.edu' in l.lower():
+            continue
         if len(l) > 50 and len(l) < 300 and not any(l.lower().startswith(p) for p in skip_prefixes):
             return l[:250]
     for l in lines:
@@ -369,13 +374,21 @@ def fetch_url_text(url: str) -> str:
 
 def parse_json_from_text(raw: str) -> dict:
     """Try JSON parse, fall back to section-header extraction."""
-    # Direct JSON attempt
+    # Direct JSON attempt - object
     cleaned = raw.strip().replace("```json", "").replace("```", "").strip()
     start = cleaned.find("{")
     end = cleaned.rfind("}")
     if start != -1 and end > start:
         try:
             return json.loads(cleaned[start:end+1])
+        except:
+            pass
+    # Try JSON array at top level
+    if cleaned.startswith("[") and cleaned.endswith("]"):
+        try:
+            arr = json.loads(cleaned)
+            if isinstance(arr, list):
+                return {"summary": arr[0] if arr else ""}
         except:
             pass
     # Section-header fallback: extract by headers
@@ -396,6 +409,14 @@ def parse_json_from_text(raw: str) -> dict:
         m = re.search(pat, raw, re.DOTALL | re.IGNORECASE)
         if m:
             val = m.group(1).strip()
+            # Handle JSON array values like ["text"]
+            if val.startswith('["') and val.endswith('"]'):
+                try:
+                    parsed = json.loads(val)
+                    if isinstance(parsed, list) and parsed:
+                        val = parsed[0] if isinstance(parsed[0], str) else str(parsed[0])
+                except:
+                    val = val.strip('["]')
             if key in ("key_findings", "research_gaps", "future_directions", "strengths", "weaknesses", "key_points"):
                 result[key] = [x.strip().lstrip("-*") for x in val.split("\n") if x.strip() and len(x.strip()) > 5]
             elif key == "difficulty_level":
@@ -408,6 +429,12 @@ def parse_json_from_text(raw: str) -> dict:
 def generate_summary(text: str, lang: str = "english", stype: str = "detailed") -> dict:
     lang_inst = {"english":"Write in English.","urdu":"Write in Urdu (اردو). Use Nastaliq style.","both":"Write first in English, then full Urdu translation below."}.get(lang, "Write in English.")
     type_inst = {"brief":"Give a concise overview in 3-4 sentences covering the core contribution only.","detailed":"Extract in-depth research content. Cover objectives, methodology, findings with data/stats, gaps, conclusions, critical analysis, future work, and key terminology.","bullet":"Extract only the most important findings as short bullet points (max 10)."}.get(stype, "Extract in-depth research content.")
+
+    # Truncate large PDFs to limit API calls - extract key sections
+    if len(text) > 10000:
+        intro = text[:3000]
+        middle = text[3000:10000]
+        text = intro + "\n\n" + middle
 
     chunks = chunk_text(text, CHUNK_SIZE)
 
