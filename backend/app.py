@@ -47,7 +47,7 @@ if not GROQ_KEYS and not GROK_KEYS:
     raise RuntimeError("At least one API key required: GROQ_API_KEY or GROK_API_KEY")
 
 GROK_MODEL = os.environ.get("GROK_MODEL", "grok-3-mini")
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
 MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", "50"))
 CHUNK_SIZE = 5000
 
