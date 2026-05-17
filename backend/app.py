@@ -103,69 +103,75 @@ for k in GROQ_KEYS:
     PROVIDERS.append({"type":"groq","key":k,"model":GROQ_MODEL})
 
 _provider_idx = 0
-def ai_chat(prompt: str) -> str:
+
+def ai_chat(prompt: str, retry: int = 1) -> str:
     global _provider_idx
-    last_err = None
-    for _ in range(len(PROVIDERS)):
-        p = PROVIDERS[_provider_idx % len(PROVIDERS)]
-        _provider_idx += 1
-        try:
-            if p["type"] == "gemini":
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{p['model']}:generateContent?key={p['key']}"
-                payload = {"contents": [{"parts": [{"text": prompt}]}]}
-                resp = http_requests.post(url, json=payload, timeout=90)
-                if resp.status_code == 429:
-                    last_err = "QUOTA_EXCEEDED"; continue
-                if resp.status_code != 200:
-                    err = resp.text[:300]
-                    if "quota" in err.lower():
+    for attempt in range(retry + 1):
+        last_err = None
+        for _ in range(len(PROVIDERS)):
+            p = PROVIDERS[_provider_idx % len(PROVIDERS)]
+            _provider_idx += 1
+            try:
+                if p["type"] == "gemini":
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{p['model']}:generateContent?key={p['key']}"
+                    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                    resp = http_requests.post(url, json=payload, timeout=90)
+                    if resp.status_code == 429:
                         last_err = "QUOTA_EXCEEDED"; continue
-                    raise Exception(f"Gemini error ({resp.status_code}): {err}")
-                data = resp.json()
-                candidates = data.get("candidates", [])
-                if not candidates:
-                    raise Exception("Empty Gemini response")
-                return candidates[0].get("content",{}).get("parts",[{}])[0].get("text","")
+                    if resp.status_code != 200:
+                        err = resp.text[:300]
+                        if "quota" in err.lower():
+                            last_err = "QUOTA_EXCEEDED"; continue
+                        raise Exception(f"Gemini error ({resp.status_code}): {err}")
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if not candidates:
+                        raise Exception("Empty Gemini response")
+                    return candidates[0].get("content",{}).get("parts",[{}])[0].get("text","")
 
-            elif p["type"] == "grok":
-                url = "https://api.x.ai/v1/chat/completions"
-                headers = {"Authorization": f"Bearer {p['key']}", "Content-Type": "application/json"}
-                payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096}
-                resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
-                if resp.status_code == 429:
-                    last_err = "QUOTA_EXCEEDED"; continue
-                if resp.status_code != 200:
-                    err = resp.text[:300]
-                    if "quota" in err.lower() or "rate" in err.lower():
+                elif p["type"] == "grok":
+                    url = "https://api.x.ai/v1/chat/completions"
+                    headers = {"Authorization": f"Bearer {p['key']}", "Content-Type": "application/json"}
+                    payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096}
+                    resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
+                    if resp.status_code == 429:
                         last_err = "QUOTA_EXCEEDED"; continue
-                    raise Exception(f"Grok error ({resp.status_code}): {err}")
-                data = resp.json()
-                choices = data.get("choices", [])
-                if not choices:
-                    raise Exception("Empty Grok response")
-                return choices[0].get("message",{}).get("content","")
+                    if resp.status_code != 200:
+                        err = resp.text[:300]
+                        if "quota" in err.lower() or "rate" in err.lower():
+                            last_err = "QUOTA_EXCEEDED"; continue
+                        raise Exception(f"Grok error ({resp.status_code}): {err}")
+                    data = resp.json()
+                    choices = data.get("choices", [])
+                    if not choices:
+                        raise Exception("Empty Grok response")
+                    return choices[0].get("message",{}).get("content","")
 
-            elif p["type"] == "groq":
-                url = "https://api.groq.com/openai/v1/chat/completions"
-                headers = {"Authorization": f"Bearer {p['key']}", "Content-Type": "application/json"}
-                payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096}
-                resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
-                if resp.status_code == 429:
-                    last_err = "QUOTA_EXCEEDED"; continue
-                if resp.status_code != 200:
-                    err = resp.text[:300]
-                    if "quota" in err.lower() or "rate" in err.lower():
+                elif p["type"] == "groq":
+                    url = "https://api.groq.com/openai/v1/chat/completions"
+                    headers = {"Authorization": f"Bearer {p['key']}", "Content-Type": "application/json"}
+                    payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096}
+                    resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
+                    if resp.status_code == 429:
                         last_err = "QUOTA_EXCEEDED"; continue
-                    raise Exception(f"Groq error ({resp.status_code}): {err}")
-                data = resp.json()
-                choices = data.get("choices", [])
-                if not choices:
-                    raise Exception("Empty Groq response")
-                return choices[0].get("message",{}).get("content","")
-        except Exception as e:
-            last_err = str(e)
-            continue
-    raise Exception(last_err or "All providers exhausted")
+                    if resp.status_code != 200:
+                        err = resp.text[:300]
+                        if "quota" in err.lower() or "rate" in err.lower():
+                            last_err = "QUOTA_EXCEEDED"; continue
+                        raise Exception(f"Groq error ({resp.status_code}): {err}")
+                    data = resp.json()
+                    choices = data.get("choices", [])
+                    if not choices:
+                        raise Exception("Empty Groq response")
+                    return choices[0].get("message",{}).get("content","")
+            except Exception as e:
+                last_err = str(e)
+                continue
+        if attempt < retry:
+            import time
+            time.sleep(30)
+        else:
+            raise Exception(last_err or "All providers exhausted")
 
 # ─── Models ───
 class SummaryResponse(BaseModel):
@@ -557,7 +563,17 @@ Provide the final merged analysis with these sections:
     return all_data
 @app.get("/health")
 def health():
-    return {"message": "AI Paper Summarizer Pro", "version": "3.1.0", "status": "running"}
+    return {"message": "AI Paper Summarizer Pro", "version": "3.1.0", "status": "running", "providers": len(PROVIDERS), "gemini_keys": len(GEMINI_KEYS), "groq_keys": len(GROQ_KEYS), "grok_keys": len(GROK_KEYS)}
+
+@app.get("/debug")
+def debug():
+    return {
+        "total_providers": len(PROVIDERS),
+        "gemini_keys": len(GEMINI_KEYS),
+        "grok_keys": len(GROK_KEYS),
+        "groq_keys": len(GROQ_KEYS),
+        "provider_list": [f"{p['type']}_{i}" for i, p in enumerate(PROVIDERS)],
+    }
 
 @app.post("/summarize", response_model=SummaryResponse)
 async def summarize(file: UploadFile = File(...), language: str = Form("english"), summary_type: str = Form("detailed")):
