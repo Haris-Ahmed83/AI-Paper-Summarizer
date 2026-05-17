@@ -153,6 +153,8 @@ def api_summarize_url(url: str, lang: str, stype: str) -> dict:
 def _fmt_err(r) -> str:
     try:
         detail = r.json().get("detail", "")
+        if detail.startswith("ALL_FAILED"):
+            return f"❌ ALL providers failed. Details: {detail}"
         if "BLOCKED_PUBLISHER" in detail:
             return detail.replace("BLOCKED_PUBLISHER: ", "🔒 ")
         if "403" in detail or "forbidden" in detail.lower():
