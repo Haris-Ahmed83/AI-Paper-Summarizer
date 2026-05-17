@@ -157,12 +157,30 @@ class HistoryItem(BaseModel):
 
 # ─── PDF Processing ───
 def extract_text_pdf(path: str) -> str:
-    text = ""
-    with open(path, "rb") as f:
-        reader = PyPDF2.PdfReader(f)
-        for page in reader.pages:
-            text += page.extract_text() + "\n"
-    return text
+    try:
+        import pdfplumber
+        text = ""
+        with pdfplumber.open(path) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+        if len(text.strip()) > 100:
+            return text.strip()
+    except Exception:
+        pass
+    # Fallback to PyPDF2
+    try:
+        text = ""
+        with open(path, "rb") as f:
+            reader = PyPDF2.PdfReader(f)
+            for page in reader.pages:
+                t = page.extract_text()
+                if t:
+                    text += t + "\n"
+        return text.strip()
+    except Exception as e:
+        raise Exception(f"PDF extraction failed: {e}")
 
 def extract_text_txt(path: str) -> str:
     with open(path, "r", encoding="utf-8", errors="ignore") as f:
@@ -471,6 +489,8 @@ async def summarize(file: UploadFile = File(...), language: str = Form("english"
     with open(path, "wb") as f: f.write(content)
     try: text = extract_text(str(path), ftype)
     except Exception as e: raise HTTPException(400, f"Extraction failed: {e}")
+    if len(text.strip()) < 50:
+        raise HTTPException(400, f"Very little text extracted ({len(text.strip())} chars). The PDF may be scanned/image-based. Try a text-based PDF.")
     if not text.strip(): raise HTTPException(400, "No text could be extracted")
     try: result = generate_summary(text, language, summary_type)
     except HTTPException: raise
