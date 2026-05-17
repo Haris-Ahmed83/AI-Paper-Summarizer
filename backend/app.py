@@ -93,19 +93,22 @@ def init_db():
             except: pass
 init_db()
 
-# ─── Multi-Provider AI Call (Gemini + Grok + Groq) ───
+# ─── Multi-Provider AI Call (Groq → Grok → Gemini) ───
 PROVIDERS = []
-for k in GEMINI_KEYS:
-    PROVIDERS.append({"type":"gemini","key":k,"model":GEMINI_MODEL})
-for k in GROK_KEYS:
-    PROVIDERS.append({"type":"grok","key":k,"model":GROK_MODEL})
+# Groq first (most reliable)
 for k in GROQ_KEYS:
     PROVIDERS.append({"type":"groq","key":k,"model":GROQ_MODEL})
+# Grok second
+for k in GROK_KEYS:
+    PROVIDERS.append({"type":"grok","key":k,"model":GROK_MODEL})
+# Gemini last
+for k in GEMINI_KEYS:
+    PROVIDERS.append({"type":"gemini","key":k,"model":GEMINI_MODEL})
 
 _provider_idx = 0
 
-def ai_chat(prompt: str, retry: int = 1) -> str:
-    global _provider_idx
+def ai_chat(prompt: str, retry: int = 3) -> str:
+    global _provider_idx, _quota_cooldown
     for attempt in range(retry + 1):
         last_err = None
         for _ in range(len(PROVIDERS)):
