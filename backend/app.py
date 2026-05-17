@@ -43,6 +43,16 @@ for i in range(2, 10):
     k = os.environ.get(f"GROK_API_KEY_{i}")
     if k: GROK_KEYS.append(k.strip())
 
+# Gemini keys (fallback)
+GEMINI_KEYS = [k.strip() for k in (
+    os.environ.get("GEMINI_API_KEYS") or
+    os.environ.get("GEMINI_API_KEY") or
+    ""
+).split(",") if k.strip()]
+for i in range(2, 10):
+    k = os.environ.get(f"GEMINI_API_KEY_{i}")
+    if k: GEMINI_KEYS.append(k.strip())
+
 if not GROQ_KEYS and not GROK_KEYS:
     raise RuntimeError("At least one API key required: GROQ_API_KEY or GROK_API_KEY")
 
@@ -97,8 +107,10 @@ for k in GROQ_KEYS:
         pass
 for k in GROK_KEYS:
     PROVIDERS.append({"type":"grok","key":k,"model":GROK_MODEL})
+for k in GEMINI_KEYS:
+    PROVIDERS.append({"type":"gemini","key":k,"model":"gemini-2.5-flash"})
 if not PROVIDERS:
-    raise RuntimeError("No API keys found. Set GROQ_API_KEY or GROK_API_KEY.")
+    raise RuntimeError("No API keys found. Set GROQ_API_KEY, GEMINI_API_KEY, or GROK_API_KEY.")
 
 # ─── AI Chat (REST-based, multi-provider) ───
 def ai_chat(prompt: str, retry: int = 1, system_prompt: str = "", temperature: float = 0.3, max_tokens: int = 4096) -> str:
@@ -152,6 +164,24 @@ def ai_chat(prompt: str, retry: int = 1, system_prompt: str = "", temperature: f
                     if not choices:
                         raise Exception("Empty Groq response")
                     return choices[0].get("message",{}).get("content","")
+
+                elif p["type"] == "gemini":
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{p['model']}:generateContent?key={p['key']}"
+                    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                    resp = http_requests.post(url, json=payload, timeout=90)
+                    if resp.status_code == 429:
+                        last_err = f"gemini_quota"; errors["gemini"] = f"429"; continue
+                    if resp.status_code != 200:
+                        err = resp.text[:200]
+                        if "quota" in err.lower():
+                            last_err = f"gemini_quota"; errors["gemini"] = err[:80]; continue
+                        raise Exception(f"Gemini err {resp.status_code}: {err}")
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if not candidates:
+                        raise Exception("Empty Gemini response")
+                    return candidates[0].get("content",{}).get("parts",[{}])[0].get("text","")
+
             except Exception as e:
                 last_err = str(e)
                 errors[p.get('type','?')] = str(e)[:80]
@@ -669,7 +699,7 @@ PAPER TEXT:
     return data
 @app.get("/health")
 def health():
-    return {"message": "AI Paper Summarizer Pro", "version": "3.1.0", "status": "running", "providers": len(PROVIDERS), "groq_keys": len(GROQ_KEYS), "grok_keys": len(GROK_KEYS)}
+    return {"message": "AI Paper Summarizer Pro", "version": "3.1.0", "status": "running", "providers": len(PROVIDERS), "groq_keys": len(GROQ_KEYS), "grok_keys": len(GROK_KEYS), "gemini_keys": len(GEMINI_KEYS)}
 
 @app.get("/debug")
 def debug():

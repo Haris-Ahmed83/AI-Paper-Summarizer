@@ -232,7 +232,7 @@ with st.sidebar:
     # Provider status
     try:
         h = requests.get(f"{API_URL}/health", timeout=3).json()
-        st.caption(f"⚡ {h.get('providers','?')} providers · {h.get('groq_keys','?')} Groq · {h.get('grok_keys','?')} Grok")
+        st.caption(f"⚡ {h.get('providers','?')} providers · {h.get('groq_keys','?')} Groq · {h.get('grok_keys','?')} Grok · {h.get('gemini_keys','?')} Gemini")
     except:
         st.caption("⚡ connecting...")
 
