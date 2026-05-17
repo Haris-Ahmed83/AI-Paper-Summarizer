@@ -1,6 +1,6 @@
 """
 AI Research Paper Summarizer v3.1
-Backend - FastAPI + Gemini REST API (no library)
+Backend - FastAPI + Groq/Grok REST API (no library)
 Supports: PDF, TXT | Large files | Citations | Export
 """
 
@@ -43,20 +43,9 @@ for i in range(2, 10):
     k = os.environ.get(f"GROK_API_KEY_{i}")
     if k: GROK_KEYS.append(k.strip())
 
-# Groq keys (groq.com - different from Grok/xAI)
-GROQ_KEYS = [k.strip() for k in (
-    os.environ.get("GROQ_API_KEYS") or
-    os.environ.get("GROQ_API_KEY") or
-    ""
-).split(",") if k.strip()]
-for i in range(2, 10):
-    k = os.environ.get(f"GROQ_API_KEY_{i}")
-    if k: GROQ_KEYS.append(k.strip())
+if not GROQ_KEYS and not GROK_KEYS:
+    raise RuntimeError("At least one API key required: GROQ_API_KEY or GROK_API_KEY")
 
-if not GEMINI_KEYS and not GROK_KEYS and not GROQ_KEYS:
-    raise RuntimeError("At least one API key required: GEMINI_API_KEY, GROK_API_KEY, or GROQ_API_KEY")
-
-GEMINI_MODEL = "gemini-2.5-flash"
 GROK_MODEL = os.environ.get("GROK_MODEL", "grok-3-mini")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", "50"))
@@ -585,7 +574,6 @@ def health():
 def debug():
     return {
         "total_providers": len(PROVIDERS),
-        "gemini_keys": len(GEMINI_KEYS),
         "grok_keys": len(GROK_KEYS),
         "groq_keys": len(GROQ_KEYS),
         "provider_list": [f"{p['type']}_{i}" for i, p in enumerate(PROVIDERS)],
