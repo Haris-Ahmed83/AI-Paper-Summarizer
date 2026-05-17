@@ -215,13 +215,18 @@ def extract_text_pdf(path: str) -> str:
         raise Exception(f"PDF extraction failed: {e}")
 
 def _clean_extracted_text(text: str) -> str:
-    # Fix missing spaces between mixed-case words (PDF artifact)
-    text = re.sub(r'(?<=[a-z])(?=[A-Z][a-z])', ' ', text)
+    # Fix missing spaces between camelCase words (PDF artifact)
+    text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
     text = re.sub(r'(?<=[a-z])(?=\d)', ' ', text)
     text = re.sub(r'(?<=\d)(?=[A-Z])', ' ', text)
     text = re.sub(r'(?<=[a-z])([A-Z]{2,})', r' \1', text)
     # Fix ordinal suffixes merged with words: "21stCentury" → "21st Century"
     text = re.sub(r'(?<=\d)(st|nd|rd|th)(?=[A-Z])', r'\1 ', text)
+    # Fix common merged patterns from PDF extraction
+    text = re.sub(r'accessedon', 'accessed on', text)
+    text = re.sub(r'([a-z])(online|on\b)', r'\1 \2', text)
+    text = re.sub(r'\be\s(\d+)', r'e\1', text)
+    text = re.sub(r'([a-z])(to|of|in|and|for)\b', r'\1 \2', text)
     return text
 
 def extract_text_txt(path: str) -> str:
