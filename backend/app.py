@@ -220,13 +220,19 @@ def _clean_extracted_text(text: str) -> str:
     text = re.sub(r'(?<=[a-z])(?=\d)', ' ', text)
     text = re.sub(r'(?<=\d)(?=[A-Z])', ' ', text)
     text = re.sub(r'(?<=[a-z])([A-Z]{2,})', r' \1', text)
-    # Fix ordinal suffixes merged with words: "21stCentury" → "21st Century"
+    # Fix ordinal suffixes merged: "21stCentury" → "21st Century"
     text = re.sub(r'(?<=\d)(st|nd|rd|th)(?=[A-Z])', r'\1 ', text)
     # Fix common merged patterns from PDF extraction
     text = re.sub(r'accessedon', 'accessed on', text)
-    text = re.sub(r'([a-z])(online|on\b)', r'\1 \2', text)
+    text = re.sub(r'Availableonline', 'Available online', text)
     text = re.sub(r'\be\s(\d+)', r'e\1', text)
-    text = re.sub(r'([a-z])(to|of|in|and|for)\b', r'\1 \2', text)
+    # Fix common short words merged: XandY, XintheY, XfortheY, XinY, XtoY, XforY, XofY, XbyY
+    text = re.sub(r'(?<=[a-z])(and|the|for|are|from|with|this|that)(?=[A-Za-z])', r' \1 ', text)
+    text = re.sub(r'(?<=[a-z])(in|to|of|on|at|by|is)(?=[A-Za-z])', r' \1 ', text)
+    # Clean up double spaces
+    text = re.sub(r'\s{2,}', ' ', text)
+    # Fix colon missing space: "Digital:Mobile" → "Digital: Mobile"
+    text = re.sub(r'(?<=[a-zA-Z]):(?=[A-Za-z])', r': ', text)
     return text
 
 def extract_text_txt(path: str) -> str:
@@ -292,6 +298,9 @@ def extract_citations(text: str) -> list:
                 r = re.sub(r'https?://\S+', '', r)
                 r = re.sub(r'\s+', ' ', r).strip()
                 r = re.sub(r'[,;:\s]+$', '', r)
+                # Fix common reference artifacts
+                r = r.replace('[Cross Ref]', '[CrossRef]').replace('[Pub Med]', '[PubMed]').replace('[Pub Med Central]', '[PMC]')
+                r = re.sub(r'(?<=[a-zA-Z])\.(?=[A-Z][a-z])', '. ', r)
                 if raw_doi:
                     r = re.sub(r'DOI[:\s]*$', '', r).strip()
                     r += f' <a href="{raw_doi}" style="color:var(--accent);font-size:12px;text-decoration:none;white-space:nowrap;">[DOI]</a>'
