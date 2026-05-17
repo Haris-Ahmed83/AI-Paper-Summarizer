@@ -375,10 +375,18 @@ def show_paper(s, show_chat=True):
     cls = "urdu" if s["language"] == "urdu" else ""
     st.markdown(f'<div class="card {cls}">{s["summary"]}</div>', unsafe_allow_html=True)
 
-    if s.get("key_points"):
+    if s.get("key_takeaways"):
+        st.markdown("<div class='section-heading'><span class='icon'>🎯</span> Key Takeaways</div>", unsafe_allow_html=True)
+        for i, pt in enumerate(s["key_takeaways"], 1):
+            st.markdown(f'<div class="finding-item"><span class="num">{i}.</span><span>{pt}</span></div>', unsafe_allow_html=True)
+    elif s.get("key_points"):
         st.markdown("<div class='section-heading'><span class='icon'>🎯</span> Key Takeaways</div>", unsafe_allow_html=True)
         for p in s["key_points"]:
             st.markdown(f'<div class="point">✦ {p}</div>', unsafe_allow_html=True)
+
+    if s.get("research_objective"):
+        st.markdown("<div class='section-heading'><span class='icon'>🎯</span> Research Objective</div>", unsafe_allow_html=True)
+        st.markdown(f'<div class="research-section">{s["research_objective"]}</div>', unsafe_allow_html=True)
 
     if s.get("methodology"):
         st.markdown("<div class='section-heading'><span class='icon'>🔬</span> Research Methodology</div>", unsafe_allow_html=True)
@@ -389,7 +397,7 @@ def show_paper(s, show_chat=True):
         for i, f in enumerate(s["key_findings"], 1):
             st.markdown(f'<div class="finding-item"><span class="num">{i}.</span><span>{f}</span></div>', unsafe_allow_html=True)
 
-    if s.get("strengths") or s.get("weaknesses"):
+    if s.get("strengths") or s.get("weaknesses") or s.get("novelty"):
         st.markdown("<div class='section-heading'><span class='icon'>⚖️</span> Critical Analysis</div>", unsafe_allow_html=True)
         if s.get("strengths"):
             st.markdown("<p style='margin:4px 0;font-weight:600;color:#10b981;'>✅ Strengths</p>", unsafe_allow_html=True)
@@ -399,9 +407,12 @@ def show_paper(s, show_chat=True):
             st.markdown("<p style='margin:12px 0 4px;font-weight:600;color:#ef4444;'>❌ Weaknesses / Limitations</p>", unsafe_allow_html=True)
             for x in s["weaknesses"]:
                 st.markdown(f'<div class="point" style="border-left-color:#ef4444;">✦ {x}</div>', unsafe_allow_html=True)
+        if s.get("novelty"):
+            st.markdown("<p style='margin:12px 0 4px;font-weight:600;color:#8b5cf6;'>✨ Novelty Assessment</p>", unsafe_allow_html=True)
+            st.markdown(f'<div class="research-section" style="border-left-color:#8b5cf6;">{s["novelty"]}</div>', unsafe_allow_html=True)
 
     if s.get("research_gaps"):
-        st.markdown("<div class='section-heading'><span class='icon'>🔍</span> Research Gaps</div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-heading'><span class='icon'>🔍</span> Research Gaps Identified</div>", unsafe_allow_html=True)
         for g in s["research_gaps"]:
             st.markdown(f'<div class="gap-item">⚠ {g}</div>', unsafe_allow_html=True)
 
@@ -409,6 +420,10 @@ def show_paper(s, show_chat=True):
         st.markdown("<div class='section-heading'><span class='icon'>🔮</span> Future Directions</div>", unsafe_allow_html=True)
         for f in s["future_directions"]:
             st.markdown(f'<div class="gap-item" style="border-left-color:#89b4fa;">▸ {f}</div>', unsafe_allow_html=True)
+
+    if s.get("practical_implications"):
+        st.markdown("<div class='section-heading'><span class='icon'>💼</span> Practical Implications</div>", unsafe_allow_html=True)
+        st.markdown(f'<div class="research-section" style="border-left-color:#f59e0b;">{s["practical_implications"]}</div>', unsafe_allow_html=True)
 
     if s.get("conclusion"):
         st.markdown("<div class='section-heading'><span class='icon'>✅</span> Conclusion & Implications</div>", unsafe_allow_html=True)
@@ -446,27 +461,37 @@ def show_paper(s, show_chat=True):
         st.download_button("📋 JSON", j, f"{sid}.json", use_container_width=True)
     with col2:
         t = f"# {s['title']}\n\n## Summary\n{s['summary']}\n\n"
-        if s.get("methodology"): t += f"## Methodology\n{s['methodology']}\n\n"
-        if s.get("key_findings"): t += "## Key Findings\n" + "\n".join(f"- {f}" for f in s["key_findings"]) + "\n\n"
+        if s.get("key_takeaways"): t += "## Key Takeaways\n" + "\n".join(f"- {p}" for p in s["key_takeaways"]) + "\n\n"
+        elif s.get("key_points"): t += "## Key Takeaways\n" + "\n".join(f"- {p}" for p in s["key_points"]) + "\n\n"
+        if s.get("research_objective"): t += f"## Research Objective\n{s['research_objective']}\n\n"
+        if s.get("methodology"): t += f"## Research Methodology\n{s['methodology']}\n\n"
+        if s.get("key_findings"): t += "## Key Findings & Results\n" + "\n".join(f"- {f}" for f in s["key_findings"]) + "\n\n"
         if s.get("strengths"): t += "## Strengths\n" + "\n".join(f"- {x}" for x in s["strengths"]) + "\n\n"
         if s.get("weaknesses"): t += "## Weaknesses\n" + "\n".join(f"- {x}" for x in s["weaknesses"]) + "\n\n"
-        if s.get("research_gaps"): t += "## Research Gaps\n" + "\n".join(f"- {g}" for g in s["research_gaps"]) + "\n\n"
+        if s.get("novelty"): t += f"## Novelty Assessment\n{s['novelty']}\n\n"
+        if s.get("research_gaps"): t += "## Research Gaps Identified\n" + "\n".join(f"- {g}" for g in s["research_gaps"]) + "\n\n"
         if s.get("future_directions"): t += "## Future Directions\n" + "\n".join(f"- {f}" for f in s["future_directions"]) + "\n\n"
-        if s.get("conclusion"): t += f"## Conclusion\n{s['conclusion']}\n\n"
+        if s.get("practical_implications"): t += f"## Practical Implications\n{s['practical_implications']}\n\n"
+        if s.get("conclusion"): t += f"## Conclusion & Implications\n{s['conclusion']}\n\n"
         if s.get("key_terms"): t += "## Key Terms\n" + "\n".join(f"- {t}" for t in s["key_terms"]) + "\n\n"
-        if s.get("key_points"): t += "## Key Takeaways\n" + "\n".join(f"- {p}" for p in s["key_points"]) + "\n\n"
+        if s.get("citations"): t += "## References\n" + "\n".join(f"[{i+1}] {c}" for i, c in enumerate(s["citations"][:20])) + "\n\n"
         st.download_button("📄 TXT", t, f"{sid}.txt", use_container_width=True)
     with col3:
         m = f"# {s['title']}\n\n## Summary\n{s['summary']}\n\n"
-        if s.get("methodology"): m += f"## Methodology\n{s['methodology']}\n\n"
-        if s.get("key_findings"): m += "## Key Findings\n" + "\n".join(f"- {f}" for f in s["key_findings"]) + "\n\n"
+        if s.get("key_takeaways"): m += "## Key Takeaways\n" + "\n".join(f"- {p}" for p in s["key_takeaways"]) + "\n\n"
+        elif s.get("key_points"): m += "## Key Takeaways\n" + "\n".join(f"- {p}" for p in s["key_points"]) + "\n\n"
+        if s.get("research_objective"): m += f"## Research Objective\n{s['research_objective']}\n\n"
+        if s.get("methodology"): m += f"## Research Methodology\n{s['methodology']}\n\n"
+        if s.get("key_findings"): m += "## Key Findings & Results\n" + "\n".join(f"- {f}" for f in s["key_findings"]) + "\n\n"
         if s.get("strengths"): m += "## Strengths\n" + "\n".join(f"- {x}" for x in s["strengths"]) + "\n\n"
         if s.get("weaknesses"): m += "## Weaknesses\n" + "\n".join(f"- {x}" for x in s["weaknesses"]) + "\n\n"
-        if s.get("research_gaps"): m += "## Research Gaps\n" + "\n".join(f"- {g}" for g in s["research_gaps"]) + "\n\n"
+        if s.get("novelty"): m += f"## Novelty Assessment\n{s['novelty']}\n\n"
+        if s.get("research_gaps"): m += "## Research Gaps Identified\n" + "\n".join(f"- {g}" for g in s["research_gaps"]) + "\n\n"
         if s.get("future_directions"): m += "## Future Directions\n" + "\n".join(f"- {f}" for f in s["future_directions"]) + "\n\n"
-        if s.get("conclusion"): m += f"## Conclusion\n{s['conclusion']}\n\n"
+        if s.get("practical_implications"): m += f"## Practical Implications\n{s['practical_implications']}\n\n"
+        if s.get("conclusion"): m += f"## Conclusion & Implications\n{s['conclusion']}\n\n"
         if s.get("key_terms"): m += "## Key Terms\n" + "\n".join(f"- {t}" for t in s["key_terms"]) + "\n\n"
-        if s.get("key_points"): m += "## Key Takeaways\n" + "\n".join(f"- {p}" for p in s["key_points"]) + "\n\n"
+        if s.get("citations"): m += "## References\n" + "\n".join(f"[{i+1}] {c}" for i, c in enumerate(s["citations"][:20])) + "\n\n"
         st.download_button("📝 Markdown", m, f"{sid}.md", use_container_width=True)
     with col4:
         resp = api_export(sid)

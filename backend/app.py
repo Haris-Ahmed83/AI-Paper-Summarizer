@@ -7,7 +7,7 @@ Supports: PDF, TXT | Large files | Citations | Export
 import os, re, uuid, json, sqlite3
 from pathlib import Path
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 import PyPDF2
 import requests as http_requests
@@ -80,19 +80,28 @@ def init_db():
         for col in ["source_url","source_text","methodology","key_findings","research_gaps","future_directions","strengths","weaknesses","conclusion","difficulty_level","key_terms"]:
             try: conn.execute(f"ALTER TABLE summaries ADD COLUMN {col} TEXT DEFAULT ''")
             except: pass
+        for col in ["research_objective","novelty","practical_implications","key_takeaways"]:
+            try: conn.execute(f"ALTER TABLE summaries ADD COLUMN {col} TEXT DEFAULT ''")
+            except: pass
 init_db()
 
 # ─── Multi-Provider AI Call (Groq + optional Grok) ───
 PROVIDERS = []
+GROQ_CLIENTS = []
 for k in GROQ_KEYS:
     PROVIDERS.append({"type":"groq","key":k,"model":GROQ_MODEL})
+    try:
+        from groq import Groq
+        GROQ_CLIENTS.append(Groq(api_key=k))
+    except ImportError:
+        pass
 for k in GROK_KEYS:
     PROVIDERS.append({"type":"grok","key":k,"model":GROK_MODEL})
 if not PROVIDERS:
     raise RuntimeError("No API keys found. Set GROQ_API_KEY or GROK_API_KEY.")
 
-# ─── AI Chat ───
-def ai_chat(prompt: str, retry: int = 1) -> str:
+# ─── AI Chat (REST-based, multi-provider) ───
+def ai_chat(prompt: str, retry: int = 1, system_prompt: str = "") -> str:
     errors = {}
     for attempt in range(retry + 1):
         last_err = None
@@ -101,7 +110,11 @@ def ai_chat(prompt: str, retry: int = 1) -> str:
                 if p["type"] == "grok":
                     url = "https://api.x.ai/v1/chat/completions"
                     headers = {"Authorization": f"Bearer {p['key']}", "Content-Type": "application/json"}
-                    payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096}
+                    msgs = []
+                    if system_prompt:
+                        msgs.append({"role": "system", "content": system_prompt})
+                    msgs.append({"role": "user", "content": prompt})
+                    payload = {"model": p["model"], "messages": msgs, "max_tokens": 4096, "temperature": 0.3}
                     resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
                     if resp.status_code == 429:
                         last_err = f"grok_quota"; errors["grok"] = f"429"; continue
@@ -119,7 +132,11 @@ def ai_chat(prompt: str, retry: int = 1) -> str:
                 elif p["type"] == "groq":
                     url = "https://api.groq.com/openai/v1/chat/completions"
                     headers = {"Authorization": f"Bearer {p['key']}", "Content-Type": "application/json"}
-                    payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096}
+                    msgs = []
+                    if system_prompt:
+                        msgs.append({"role": "system", "content": system_prompt})
+                    msgs.append({"role": "user", "content": prompt})
+                    payload = {"model": p["model"], "messages": msgs, "max_tokens": 4096, "temperature": 0.3}
                     resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
                     if resp.status_code == 429:
                         last_err = f"groq_quota"; errors["groq"] = f"429"; continue
@@ -156,6 +173,8 @@ class SummaryResponse(BaseModel):
     difficulty_level: str = "Intermediate"
     key_terms: list = []; key_points: list = []
     citations: list = []
+    research_objective: str = ""; novelty: str = ""
+    practical_implications: str = ""; key_takeaways: list = []
     language: str; summary_type: str; word_count: int
     processing_time: float; created_at: str
     source_url: str = ""
@@ -404,170 +423,160 @@ def parse_json_from_text(raw: str) -> dict:
                 result[key] = val
     return result
 
-# ─── AI Summary ───
-def generate_summary(text: str, lang: str = "english", stype: str = "detailed") -> dict:
-    lang_inst = {"english":"Write in English.","urdu":"Write in Urdu (اردو). Use Nastaliq style.","both":"Write first in English, then full Urdu translation below."}.get(lang, "Write in English.")
-    type_inst = {"brief":"Give a concise overview in 3-4 sentences covering the core contribution only.","detailed":"Extract in-depth research content. Cover objectives, methodology, findings with data/stats, gaps, conclusions, critical analysis, future work, and key terminology.","bullet":"Extract only the most important findings as short bullet points (max 10)."}.get(stype, "Extract in-depth research content.")
+def parse_advanced_summary(raw: str) -> dict:
+    """Extract sections from advanced prompt response using regex."""
+    result = {}
+    patterns = {
+        "summary": r"## SUMMARY\s*\n(.*?)(?=\n## [A-Z]|\Z)",
+        "key_takeaways": r"## KEY TAKEAWAYS\s*\n(.*?)(?=\n## [A-Z]|\Z)",
+        "research_objective": r"## RESEARCH OBJECTIVE\s*\n(.*?)(?=\n## [A-Z]|\Z)",
+        "methodology": r"## RESEARCH METHODOLOGY\s*\n(.*?)(?=\n## [A-Z]|\Z)",
+        "key_findings": r"## KEY FINDINGS.*?\n(.*?)(?=\n## [A-Z]|\Z)",
+        "novelty": r"(?:### |\*\*)?Novelty Assessment\s*\n(.*?)(?=\n## [A-Z]|\n###|\Z)",
+        "research_gaps": r"## RESEARCH GAPS.*?\n(.*?)(?=\n## [A-Z]|\Z)",
+        "future_directions": r"## FUTURE DIRECTIONS\s*\n(.*?)(?=\n## [A-Z]|\Z)",
+        "practical_implications": r"## PRACTICAL IMPLICATIONS\s*\n(.*?)(?=\n## [A-Z]|\Z)",
+        "conclusion": r"## CONCLUSION.*?\n(.*?)(?=\n## [A-Z]|\Z)",
+    }
+    for key, pat in patterns.items():
+        m = re.search(pat, raw, re.DOTALL | re.IGNORECASE)
+        if m:
+            val = m.group(1).strip()
+            if key in ("key_takeaways", "key_findings", "research_gaps", "future_directions"):
+                result[key] = [x.strip().lstrip("•-*✦▸123456789.").strip()
+                               for x in val.split("\n")
+                               if x.strip() and len(x.strip()) > 8]
+            else:
+                result[key] = val
+    # Parse strengths & weaknesses from Critical Analysis section
+    ca = re.search(r"## CRITICAL ANALYSIS\s*\n(.*?)(?=\n## [A-Z]|\Z)", raw, re.DOTALL | re.IGNORECASE)
+    if ca:
+        body = ca.group(1)
+        s_m = re.search(r"(?:### |\*\*)?Strengths?\s*\n(.*?)(?=\n(?:### |\*\*)?(?:Weakness|Novelty)|\Z)", body, re.DOTALL | re.IGNORECASE)
+        w_m = re.search(r"(?:### |\*\*)?Weaknesses?.*?\n(.*?)(?=\n(?:### |\*\*)?(?:Novelty)|\Z)", body, re.DOTALL | re.IGNORECASE)
+        if s_m:
+            result["strengths"] = [x.strip().lstrip("•-*✦").strip()
+                                   for x in s_m.group(1).split("\n") if x.strip() and len(x.strip()) > 8]
+        if w_m:
+            result["weaknesses"] = [x.strip().lstrip("•-*✦").strip()
+                                    for x in w_m.group(1).split("\n") if x.strip() and len(x.strip()) > 8]
+    return result
 
-    # Truncate large PDFs — extract key sections
-    if len(text) > 10000:
-        intro = text[:3000]
-        middle = text[3000:10000]
+# ─── AI Summary (Advanced) ───
+def generate_summary(text: str, lang: str = "english", stype: str = "detailed") -> dict:
+    lang_inst = {"english":"Respond in English only.","urdu":"اردو میں جواب دیں۔","both":"Respond in both English and Urdu."}.get(lang, "Respond in English only.")
+    type_map = {
+        "brief": "concise 3-4 paragraph overview covering the core contribution only",
+        "detailed": "extremely detailed, PhD/MPhil level academic analysis with all structured sections",
+        "bullet": "bullet points only, maximum 8 points"
+    }
+    depth = type_map.get(stype, "detailed academic analysis")
+
+    # More text for better analysis — llama-3.3-70b has 128K context
+    MAX_CHARS = 12000
+    if len(text) > MAX_CHARS:
+        intro = text[:4000]
+        middle = text[4000:MAX_CHARS]
         text = intro + "\n\n" + middle
 
-    chunks = chunk_text(text, CHUNK_SIZE)
-
-    # Extract title from full text
     title = extract_title(text)
 
-    # Process first chunk
-    first_prompt = f"""You are an MPhil/PhD research assistant analyzing a research paper.
-
-Paper Title: {title}
-{type_inst}
+    if stype == "bullet":
+        corpus = text[:8000]
+        prompt = f"""## Paper: {title}
+{depth}.
 {lang_inst}
 
-Analyze the text below and provide a structured analysis with these sections:
-
-## Summary
-(A 3-5 sentence paragraph explaining the core content)
-
-## Methodology
-(Research design, methods, sample — or say "Not specified" if unclear)
-
-## Key Findings
-(- Key finding 1
-- Key finding 2
-- Key finding 3)
-
-## Research Gaps
-(- Gap 1
-- Gap 2)
-
-## Future Directions
-(- Direction 1
-- Direction 2)
-
-## Strengths
-(- Strength 1)
-
-## Weaknesses
-(- Weakness 1)
-
-## Conclusion
-(Lessons and implications)
-
-## Difficulty
-(Beginner, Intermediate, or Advanced)
-
-## Key Points
-(- Bullet 1
-- Bullet 2)
+Use ONLY the text below. Be specific with numbers, datasets, models.
 
 TEXT:
-{chunks[0]}"""
+{corpus}"""
+        raw = ai_chat(prompt, system_prompt="You are an expert academic analyst. Extract bullet points only.")
+        return {"title": title, "summary": raw, "methodology": "", "key_findings": [],
+                "research_gaps": [], "future_directions": [], "strengths": [],
+                "weaknesses": [], "conclusion": "", "difficulty_level": "Intermediate",
+                "key_terms": [], "key_points": [], "citations": [],
+                "research_objective": "", "novelty": "", "practical_implications": "",
+                "key_takeaways": []}
 
-    all_data = {"summary":"","methodology":"","key_findings":[],"research_gaps":[],"future_directions":[],"strengths":[],"weaknesses":[],"conclusion":"","difficulty_level":"Intermediate","key_terms":[],"key_points":[],"citations":[]}
+    corpus = text[:MAX_CHARS]
+    prompt = f"""You are an expert academic research analyst with PhD-level expertise. Analyze the following research paper and provide a {depth}. {lang_inst}
 
-    for idx, chunk in enumerate(chunks):
-        if idx == 0:
-            prompt = first_prompt
-        else:
-            prompt = f"""Continue analyzing PART {idx+1}/{len(chunks)} of this research paper.
+STRICT RULES:
+- Extract information ONLY from the provided text. Do NOT hallucinate.
+- Be specific with numbers, datasets, models, percentages where mentioned.
+- Use academic tone. Never start with "I" or "The paper says".
+- Provide concrete, cited evidence for each claim.
 
-Provide structured analysis:
+Provide your analysis in this EXACT structure:
 
-## Summary
-## Methodology
-## Key Findings
-(- list items)
-## Research Gaps
-## Future Directions
-## Strengths
-## Weaknesses
-## Conclusion
-## Difficulty
-(Beginner, Intermediate, or Advanced)
-## Key Points
+## SUMMARY
+Write a comprehensive 150-200 word paragraph covering: what this paper is about, its core contribution, and why it matters academically.
 
-TEXT:
-{chunk}"""
+## KEY TAKEAWAYS
+List 5-7 specific, detailed bullet points. Each must be 1-2 sentences with specific details from the paper.
 
-        try:
-            raw = ai_chat(prompt)
-            data = parse_json_from_text(raw)
-            for k in all_data:
-                if k == "summary":
-                    all_data["summary"] += "\n" + data.get("summary", "")
-                elif k == "methodology":
-                    if data.get("methodology"): all_data["methodology"] = data["methodology"]
-                elif k == "conclusion":
-                    if data.get("conclusion"): all_data["conclusion"] = data["conclusion"]
-                elif k == "difficulty_level":
-                    if data.get("difficulty_level"): all_data["difficulty_level"] = data["difficulty_level"]
-                elif isinstance(data.get(k), list):
-                    all_data[k].extend(data.get(k, []))
-        except Exception as e:
-            if str(e).startswith("ALL_FAILED"): raise
-            if str(e) == "QUOTA_EXCEEDED": raise
-            if str(e) == "MODEL_ERROR": raise
+## RESEARCH OBJECTIVE
+What specific problem does this paper solve? What gap does it address? (2-3 sentences)
 
-    # Merge chunks for multi-chunk papers
-    if len(chunks) > 1 and stype != "bullet":
-        findings_str = "\n".join(f"- {f}" for f in all_data['key_findings'][:8]) if all_data['key_findings'] else "None"
-        gaps_str = "\n".join(f"- {g}" for g in all_data['research_gaps'][:5]) if all_data['research_gaps'] else "None"
-        future_str = "\n".join(f"- {f}" for f in all_data['future_directions'][:5]) if all_data['future_directions'] else "None"
-        strengths_str = "\n".join(f"- {s}" for s in all_data['strengths'][:5]) if all_data['strengths'] else "None"
-        weaknesses_str = "\n".join(f"- {w}" for w in all_data['weaknesses'][:5]) if all_data['weaknesses'] else "None"
-        merge_prompt = f"""You are an MPhil/PhD research assistant. Merge these partial findings into ONE complete analysis for the paper "{title}". Remove redundancy. Keep the most valuable content.
+## RESEARCH METHODOLOGY
+Describe in detail: study design/approach, datasets used (names and sizes), models/tools/frameworks, evaluation metrics, sample sizes or language coverage if applicable.
 
-Key Findings collected:
-{findings_str}
+## KEY FINDINGS & RESULTS
+List 4-6 numbered findings with specific statistics, percentages, or quantitative results where available.
 
-Research Gaps collected:
-{gaps_str}
+## CRITICAL ANALYSIS
+### Strengths (2-3 points)
+- What does this paper do exceptionally well?
 
-Future Directions collected:
-{future_str}
+### Weaknesses / Limitations (2-3 points)
+- What are the methodological gaps or limitations?
 
-Strengths:
-{strengths_str}
+### Novelty Assessment
+- What is genuinely new about this research? (1-2 sentences)
 
-Weaknesses:
-{weaknesses_str}
+## RESEARCH GAPS IDENTIFIED
+List 2-3 specific gaps this paper itself acknowledges OR that you identify from the methodology.
 
-Methodology note: {all_data['methodology'][:500] if all_data['methodology'] else 'Not extracted'}
+## FUTURE DIRECTIONS
+List 3-4 specific, actionable future research directions based on the paper's findings.
 
-Provide the final merged analysis with these sections:
+## PRACTICAL IMPLICATIONS
+Who benefits from this research and how? (researchers, practitioners, policymakers, students)
 
-## Summary
-## Methodology
-## Key Findings
-## Research Gaps
-## Future Directions
-## Strengths
-## Weaknesses
-## Conclusion
-## Difficulty
-(Beginner, Intermediate, or Advanced)
-## Key Points"""
-        try:
-            raw = ai_chat(merge_prompt)
-            merged = parse_json_from_text(raw)
-            for k in all_data:
-                if k == "citations": continue
-                if isinstance(merged.get(k), str) and merged[k]:
-                    all_data[k] = merged[k]
-                elif isinstance(merged.get(k), list) and merged[k]:
-                    all_data[k] = merged[k]
-        except:
-            pass
+## CONCLUSION & IMPLICATIONS
+Write a 100-150 word paragraph synthesizing the paper's contribution to the field.
 
-    # Final assembly
-    all_data["title"] = title
-    all_data["citations"] = clean_citations_with_ai(extract_citations(text))
-    all_data["summary"] = all_data["summary"].strip() or title
-    return all_data
+---
+PAPER TITLE: {title}
+
+PAPER TEXT:
+{corpus}"""
+
+    try:
+        raw = ai_chat(prompt, system_prompt="You are an expert academic research analyst. Provide precise, detailed, PhD-level analysis. Never hallucinate. Extract only from provided text.")
+    except Exception as e:
+        raise
+
+    data = parse_advanced_summary(raw)
+    data["title"] = title
+    data["citations"] = clean_citations_with_ai(extract_citations(text))
+    data["summary"] = data.get("summary", "").strip() or title
+    data["methodology"] = data.get("methodology", "")
+    data["conclusion"] = data.get("conclusion", "")
+    data["difficulty_level"] = "Intermediate"
+    data["key_terms"] = []
+    data["key_points"] = data.get("key_takeaways", [])
+    data["key_findings"] = data.get("key_findings", [])
+    data["research_gaps"] = data.get("research_gaps", [])
+    data["future_directions"] = data.get("future_directions", [])
+    data["strengths"] = data.get("strengths", [])
+    data["weaknesses"] = data.get("weaknesses", [])
+    data["research_objective"] = data.get("research_objective", "")
+    data["novelty"] = data.get("novelty", "")
+    data["practical_implications"] = data.get("practical_implications", "")
+    data["key_takeaways"] = data.get("key_takeaways", [])
+    return data
 @app.get("/health")
 def health():
     return {"message": "AI Paper Summarizer Pro", "version": "3.1.0", "status": "running", "providers": len(PROVIDERS), "groq_keys": len(GROQ_KEYS), "grok_keys": len(GROK_KEYS)}
@@ -608,12 +617,12 @@ async def summarize(file: UploadFile = File(...), language: str = Form("english"
         raise HTTPException(500, f"AI error: {err}")
     elapsed = (datetime.utcnow() - start).total_seconds()
     def jl(v): return json.dumps(v) if isinstance(v, list) else v
-    record = {"id":fid,"filename":file.filename,"filesize":len(content),"filetype":ftype.upper(),"source_url":"","title":result["title"],"summary":result["summary"],"source_text":text,"methodology":result.get("methodology",""),"key_findings":jl(result.get("key_findings",[])),"research_gaps":jl(result.get("research_gaps",[])),"future_directions":jl(result.get("future_directions",[])),"strengths":jl(result.get("strengths",[])),"weaknesses":jl(result.get("weaknesses",[])),"conclusion":result.get("conclusion",""),"difficulty_level":result.get("difficulty_level","Intermediate"),"key_terms":jl(result.get("key_terms",[])),"key_points":jl(result.get("key_points",[])),"citations":jl(result.get("citations",[])),"language":language,"summary_type":summary_type,"word_count":len(result["summary"].split()),"processing_time":round(elapsed,2),"created_at":datetime.utcnow().isoformat()}
-    cols = "id,filename,filesize,filetype,source_url,title,summary,source_text,methodology,key_findings,research_gaps,future_directions,strengths,weaknesses,conclusion,difficulty_level,key_terms,key_points,citations,language,summary_type,word_count,processing_time,created_at"
-    ph = ":id,:filename,:filesize,:filetype,:source_url,:title,:summary,:source_text,:methodology,:key_findings,:research_gaps,:future_directions,:strengths,:weaknesses,:conclusion,:difficulty_level,:key_terms,:key_points,:citations,:language,:summary_type,:word_count,:processing_time,:created_at"
+    record = {"id":fid,"filename":file.filename,"filesize":len(content),"filetype":ftype.upper(),"source_url":"","title":result["title"],"summary":result["summary"],"source_text":text,"methodology":result.get("methodology",""),"key_findings":jl(result.get("key_findings",[])),"research_gaps":jl(result.get("research_gaps",[])),"future_directions":jl(result.get("future_directions",[])),"strengths":jl(result.get("strengths",[])),"weaknesses":jl(result.get("weaknesses",[])),"conclusion":result.get("conclusion",""),"difficulty_level":result.get("difficulty_level","Intermediate"),"key_terms":jl(result.get("key_terms",[])),"key_points":jl(result.get("key_points",[])),"citations":jl(result.get("citations",[])),"research_objective":result.get("research_objective",""),"novelty":result.get("novelty",""),"practical_implications":result.get("practical_implications",""),"key_takeaways":jl(result.get("key_takeaways",[])),"language":language,"summary_type":summary_type,"word_count":len(result["summary"].split()),"processing_time":round(elapsed,2),"created_at":datetime.utcnow().isoformat()}
+    cols = "id,filename,filesize,filetype,source_url,title,summary,source_text,methodology,key_findings,research_gaps,future_directions,strengths,weaknesses,conclusion,difficulty_level,key_terms,key_points,citations,research_objective,novelty,practical_implications,key_takeaways,language,summary_type,word_count,processing_time,created_at"
+    ph = ":id,:filename,:filesize,:filetype,:source_url,:title,:summary,:source_text,:methodology,:key_findings,:research_gaps,:future_directions,:strengths,:weaknesses,:conclusion,:difficulty_level,:key_terms,:key_points,:citations,:research_objective,:novelty,:practical_implications,:key_takeaways,:language,:summary_type,:word_count,:processing_time,:created_at"
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(f"INSERT INTO summaries ({cols}) VALUES ({ph})", record)
-    return {"id":fid,"filename":file.filename,"filesize":len(content),"filetype":ftype.upper(),"source_url":"","title":result["title"],"summary":result["summary"],"methodology":result.get("methodology",""),"key_findings":result.get("key_findings",[]),"research_gaps":result.get("research_gaps",[]),"future_directions":result.get("future_directions",[]),"strengths":result.get("strengths",[]),"weaknesses":result.get("weaknesses",[]),"conclusion":result.get("conclusion",""),"difficulty_level":result.get("difficulty_level","Intermediate"),"key_terms":result.get("key_terms",[]),"key_points":result.get("key_points",[]),"citations":result.get("citations",[]),"language":language,"summary_type":summary_type,"word_count":len(result["summary"].split()),"processing_time":round(elapsed,2),"created_at":record["created_at"]}
+    return {"id":fid,"filename":file.filename,"filesize":len(content),"filetype":ftype.upper(),"source_url":"","title":result["title"],"summary":result["summary"],"methodology":result.get("methodology",""),"key_findings":result.get("key_findings",[]),"research_gaps":result.get("research_gaps",[]),"future_directions":result.get("future_directions",[]),"strengths":result.get("strengths",[]),"weaknesses":result.get("weaknesses",[]),"conclusion":result.get("conclusion",""),"difficulty_level":result.get("difficulty_level","Intermediate"),"key_terms":result.get("key_terms",[]),"key_points":result.get("key_points",[]),"citations":result.get("citations",[]),"research_objective":result.get("research_objective",""),"novelty":result.get("novelty",""),"practical_implications":result.get("practical_implications",""),"key_takeaways":result.get("key_takeaways",[]),"language":language,"summary_type":summary_type,"word_count":len(result["summary"].split()),"processing_time":round(elapsed,2),"created_at":record["created_at"]}
 
 class URLInput(BaseModel):
     url: str
@@ -643,12 +652,12 @@ async def summarize_url(body: URLInput):
     fid = str(uuid.uuid4())[:8]
     fname = body.url.split("/")[-1][:50] or "webpage"
     def jl(v): return json.dumps(v) if isinstance(v, list) else v
-    record = {"id":fid,"filename":fname,"filesize":len(text.encode("utf-8")),"filetype":"URL","source_url":body.url,"title":result["title"],"summary":result["summary"],"source_text":text,"methodology":result.get("methodology",""),"key_findings":jl(result.get("key_findings",[])),"research_gaps":jl(result.get("research_gaps",[])),"future_directions":jl(result.get("future_directions",[])),"strengths":jl(result.get("strengths",[])),"weaknesses":jl(result.get("weaknesses",[])),"conclusion":result.get("conclusion",""),"difficulty_level":result.get("difficulty_level","Intermediate"),"key_terms":jl(result.get("key_terms",[])),"key_points":jl(result.get("key_points",[])),"citations":jl(result.get("citations",[])),"language":body.language,"summary_type":body.summary_type,"word_count":len(result["summary"].split()),"processing_time":round(elapsed,2),"created_at":datetime.utcnow().isoformat()}
-    cols = "id,filename,filesize,filetype,source_url,title,summary,source_text,methodology,key_findings,research_gaps,future_directions,strengths,weaknesses,conclusion,difficulty_level,key_terms,key_points,citations,language,summary_type,word_count,processing_time,created_at"
-    ph = ":id,:filename,:filesize,:filetype,:source_url,:title,:summary,:source_text,:methodology,:key_findings,:research_gaps,:future_directions,:strengths,:weaknesses,:conclusion,:difficulty_level,:key_terms,:key_points,:citations,:language,:summary_type,:word_count,:processing_time,:created_at"
+    record = {"id":fid,"filename":fname,"filesize":len(text.encode("utf-8")),"filetype":"URL","source_url":body.url,"title":result["title"],"summary":result["summary"],"source_text":text,"methodology":result.get("methodology",""),"key_findings":jl(result.get("key_findings",[])),"research_gaps":jl(result.get("research_gaps",[])),"future_directions":jl(result.get("future_directions",[])),"strengths":jl(result.get("strengths",[])),"weaknesses":jl(result.get("weaknesses",[])),"conclusion":result.get("conclusion",""),"difficulty_level":result.get("difficulty_level","Intermediate"),"key_terms":jl(result.get("key_terms",[])),"key_points":jl(result.get("key_points",[])),"citations":jl(result.get("citations",[])),"research_objective":result.get("research_objective",""),"novelty":result.get("novelty",""),"practical_implications":result.get("practical_implications",""),"key_takeaways":jl(result.get("key_takeaways",[])),"language":body.language,"summary_type":body.summary_type,"word_count":len(result["summary"].split()),"processing_time":round(elapsed,2),"created_at":datetime.utcnow().isoformat()}
+    cols = "id,filename,filesize,filetype,source_url,title,summary,source_text,methodology,key_findings,research_gaps,future_directions,strengths,weaknesses,conclusion,difficulty_level,key_terms,key_points,citations,research_objective,novelty,practical_implications,key_takeaways,language,summary_type,word_count,processing_time,created_at"
+    ph = ":id,:filename,:filesize,:filetype,:source_url,:title,:summary,:source_text,:methodology,:key_findings,:research_gaps,:future_directions,:strengths,:weaknesses,:conclusion,:difficulty_level,:key_terms,:key_points,:citations,:research_objective,:novelty,:practical_implications,:key_takeaways,:language,:summary_type,:word_count,:processing_time,:created_at"
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(f"INSERT INTO summaries ({cols}) VALUES ({ph})", record)
-    return {"id":fid,"filename":fname,"filesize":len(text.encode("utf-8")),"filetype":"URL","source_url":body.url,"title":result["title"],"summary":result["summary"],"methodology":result.get("methodology",""),"key_findings":result.get("key_findings",[]),"research_gaps":result.get("research_gaps",[]),"future_directions":result.get("future_directions",[]),"strengths":result.get("strengths",[]),"weaknesses":result.get("weaknesses",[]),"conclusion":result.get("conclusion",""),"difficulty_level":result.get("difficulty_level","Intermediate"),"key_terms":result.get("key_terms",[]),"key_points":result.get("key_points",[]),"citations":result.get("citations",[]),"language":body.language,"summary_type":body.summary_type,"word_count":len(result["summary"].split()),"processing_time":round(elapsed,2),"created_at":record["created_at"]}
+    return {"id":fid,"filename":fname,"filesize":len(text.encode("utf-8")),"filetype":"URL","source_url":body.url,"title":result["title"],"summary":result["summary"],"methodology":result.get("methodology",""),"key_findings":result.get("key_findings",[]),"research_gaps":result.get("research_gaps",[]),"future_directions":result.get("future_directions",[]),"strengths":result.get("strengths",[]),"weaknesses":result.get("weaknesses",[]),"conclusion":result.get("conclusion",""),"difficulty_level":result.get("difficulty_level","Intermediate"),"key_terms":result.get("key_terms",[]),"key_points":result.get("key_points",[]),"citations":result.get("citations",[]),"research_objective":result.get("research_objective",""),"novelty":result.get("novelty",""),"practical_implications":result.get("practical_implications",""),"key_takeaways":result.get("key_takeaways",[]),"language":body.language,"summary_type":body.summary_type,"word_count":len(result["summary"].split()),"processing_time":round(elapsed,2),"created_at":record["created_at"]}
 
 @app.get("/history", response_model=List[HistoryItem])
 def history():
@@ -664,7 +673,7 @@ def get(sid: str):
     def j(v):
         try: return json.loads(v) if isinstance(v, str) else v
         except: return []
-    return {"id":r[0],"filename":r[1],"filesize":r[2],"filetype":r[3],"source_url":r[4] or "","title":r[5],"summary":r[6],"source_text":r[7] or "","methodology":r[8] or "","key_findings":j(r[9]),"research_gaps":j(r[10]),"future_directions":j(r[11]),"strengths":j(r[12]),"weaknesses":j(r[13]),"conclusion":r[14] or "","difficulty_level":r[15] or "Intermediate","key_terms":j(r[16]),"key_points":j(r[17]),"citations":j(r[18]),"language":r[19],"summary_type":r[20],"word_count":r[21],"processing_time":r[22],"created_at":r[23]}
+    return {"id":r[0],"filename":r[1],"filesize":r[2],"filetype":r[3],"source_url":r[4] or "","title":r[5],"summary":r[6],"source_text":r[7] or "","methodology":r[8] or "","key_findings":j(r[9]),"research_gaps":j(r[10]),"future_directions":j(r[11]),"strengths":j(r[12]),"weaknesses":j(r[13]),"conclusion":r[14] or "","difficulty_level":r[15] or "Intermediate","key_terms":j(r[16]),"key_points":j(r[17]),"citations":j(r[18]),"language":r[19],"summary_type":r[20],"word_count":r[21],"processing_time":r[22],"created_at":r[23],"research_objective":r[24] if len(r)>24 and r[24] else "","novelty":r[25] if len(r)>25 and r[25] else "","practical_implications":r[26] if len(r)>26 and r[26] else "","key_takeaways":j(r[27]) if len(r)>27 else []}
 
 @app.delete("/summary/{sid}")
 def delete(sid: str):
@@ -685,18 +694,26 @@ def export(sid: str, fmt: str = "txt"):
     future_directions=j(r[11]); strengths=j(r[12]); weaknesses=j(r[13])
     conclusion=r[14] or ""; difficulty_level=r[15] or "Intermediate"
     key_terms=j(r[16]); points=j(r[17]); citations=j(r[18])
+    research_objective=r[24] if len(r)>24 and r[24] else ""
+    novelty=r[25] if len(r)>25 and r[25] else ""
+    practical_implications=r[26] if len(r)>26 and r[26] else ""
+    key_takeaways=j(r[27]) if len(r)>27 else []
     if fmt == "json":
-        return JSONResponse({"title":title,"summary":summary,"methodology":methodology,"key_findings":key_findings,"research_gaps":research_gaps,"future_directions":future_directions,"strengths":strengths,"weaknesses":weaknesses,"conclusion":conclusion,"difficulty_level":difficulty_level,"key_terms":key_terms,"key_points":points,"citations":citations})
+        return JSONResponse({"title":title,"summary":summary,"methodology":methodology,"key_findings":key_findings,"research_gaps":research_gaps,"future_directions":future_directions,"strengths":strengths,"weaknesses":weaknesses,"conclusion":conclusion,"difficulty_level":difficulty_level,"key_terms":key_terms,"key_points":key_takeaways or points,"citations":citations,"research_objective":research_objective,"novelty":novelty,"practical_implications":practical_implications,"key_takeaways":key_takeaways})
     text = f"{'='*60}\n{title}\n{'='*60}\n\nSUMMARY:\n{summary}\n"
+    if research_objective: text += f"\nRESEARCH OBJECTIVE:\n{research_objective}\n"
     if methodology: text += f"\nMETHODOLOGY:\n{methodology}\n"
     if key_findings: text += "\nKEY FINDINGS:\n" + "\n".join(f"  * {f}" for f in key_findings)
+    if key_takeaways: text += "\nKEY TAKEAWAYS:\n" + "\n".join(f"  * {p}" for p in key_takeaways)
+    elif points: text += "\nKEY TAKEAWAYS:\n" + "\n".join(f"  * {p}" for p in points)
     if strengths: text += "\nSTRENGTHS:\n" + "\n".join(f"  * {s}" for s in strengths)
     if weaknesses: text += "\nWEAKNESSES:\n" + "\n".join(f"  * {w}" for w in weaknesses)
+    if novelty: text += f"\nNOVELTY:\n{novelty}\n"
     if research_gaps: text += "\nRESEARCH GAPS:\n" + "\n".join(f"  * {g}" for g in research_gaps)
     if future_directions: text += "\nFUTURE DIRECTIONS:\n" + "\n".join(f"  * {f}" for f in future_directions)
+    if practical_implications: text += f"\nPRACTICAL IMPLICATIONS:\n{practical_implications}\n"
     if conclusion: text += f"\nCONCLUSION:\n{conclusion}\n"
     if key_terms: text += "\nKEY TERMS:\n" + "\n".join(f"  * {t}" for t in key_terms)
-    if points: text += "\nKEY POINTS:\n" + "\n".join(f"  * {p}" for p in points)
     if citations: text += "\nCITATIONS:\n" + "\n".join(f"  [{i+1}] {c}" for i, c in enumerate(citations[:10]))
     out_path = OUTPUT_DIR / f"{sid}.txt"
     out_path.write_text(text, encoding="utf-8")
