@@ -213,20 +213,36 @@ def extract_text_pdf(path: str) -> str:
         raise Exception(f"PDF extraction failed: {e}")
 
 def _clean_extracted_text(text: str) -> str:
-    # Fix missing spaces between camelCase words (PDF artifact)
-    text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
-    text = re.sub(r'(?<=[a-z])(?=\d)', ' ', text)
-    text = re.sub(r'(?<=\d)(?=[A-Z])', ' ', text)
-    text = re.sub(r'(?<=[a-z])([A-Z]{2,})', r' \1', text)
-    # Fix ordinal suffixes merged: "21stCentury" → "21st Century"
-    text = re.sub(r'(?<=\d)(st|nd|rd|th)(?=[A-Z])', r'\1 ', text)
-    # Fix specific known PDF artifacts (exact strings only - no generic word splitting)
+    """Universal text cleaner — fixes PDF extraction artifacts."""
+    if not text: return text
+    # Medical/tech terms
+    terms = {
+        r'\bm\s+[Hh]ealth\b': 'mHealth', r'\be\s+[Hh]ealth\b': 'eHealth',
+        r'\btel\s*e\s*[Hh]ealth\b': 'Telehealth', r'\btel\s*e\s*[Mm]edicine\b': 'Telemedicine',
+        r'\btel\s*e\s*[Cc]are\b': 'Telecare', r'\bai\s+[Pp]owered\b': 'AI-powered',
+        r'\bml\s+[Mm]odel\b': 'ML model', r'\bnlp\s+[Tt]ask\b': 'NLP task',
+        r'\bllm\s+[Mm]odel\b': 'LLM model', r'\bgpt\s*-\s*4\b': 'GPT-4',
+        r'\bgpt\s*-\s*3\b': 'GPT-3', r'\bchat\s*gpt\b': 'ChatGPT',
+        r'\bcovid\s*-\s*19\b': 'COVID-19',
+    }
+    for pat, repl in terms.items():
+        text = re.sub(pat, repl, text, flags=re.IGNORECASE)
+    # Hyphen breaks
+    text = re.sub(r'(\w+)-\s*\n\s*(\w+)', r'\1\2', text)
+    # Line breaks mid-sentence
+    text = re.sub(r'(?<=[a-z])\n(?=[a-z])', ' ', text)
+    # URL fixes
+    text = re.sub(r'doi\.\s*org', 'doi.org', text, flags=re.IGNORECASE)
+    text = re.sub(r'http\s*s\s*://', 'https://', text)
+    # Common merged words
+    text = re.sub(r'ac\s+cessed', 'accessed', text, flags=re.IGNORECASE)
+    text = re.sub(r'avail\s+able', 'available', text, flags=re.IGNORECASE)
+    text = re.sub(r'onl\s+ine', 'online', text, flags=re.IGNORECASE)
     text = re.sub(r'accessedon', 'accessed on', text)
     text = re.sub(r'Availableonline', 'Available online', text)
-    text = re.sub(r'\be\s(\d+)', r'e\1', text)
-    # Fix colon missing space: "Digital:Mobile" → "Digital: Mobile"
+    # Fix colon spacing
     text = re.sub(r'(?<=[a-zA-Z]):(?=[A-Z])', r': ', text)
-    # Clean up double spaces
+    # Multiple spaces
     text = re.sub(r'\s{2,}', ' ', text)
     return text
 
@@ -344,25 +360,31 @@ References:
     return citations
 
 def extract_title(text: str) -> str:
+    """Universal title extractor for any PDF type."""
     lines = text.strip().split('\n')
-    for line in lines:
+    candidates = []
+    skip_starts = ('abstract','received','accepted','published','copyright','editorial','doi','http','volume','journal','page','figure','table','note','keywords','introduction','background','email','correspondence','submitted')
+    skip_chars = ['∗','†','‡','◇','♡','♥','@','.com','doi.org','http','©','ISSN','ISBN']
+    for line in lines[:20]:
         line = line.strip()
-        # Skip lines with special symbols (authors)
-        if any(c in line for c in ['∗', '†', '‡', '◇', '♡', '♥', '@']):
-            continue
-        # Skip email/URL lines
-        if '.com' in line.lower() or '.edu' in line.lower():
-            continue
-        # Skip "Abstract" or metadata lines
-        if line.lower().startswith('abstract'):
-            continue
-        if line.lower().startswith(('received:', 'accepted:', 'published:', 'copyright:', 'doi:', 'correspondence', 'submitted')):
-            continue
-        # Skip short lines
-        if len(line) < 20:
-            continue
-        return line[:250]
-    return "Untitled Document"
+        if not line or len(line) < 15 or len(line) > 400: continue
+        if any(line.lower().startswith(s) for s in skip_starts): continue
+        if any(c in line for c in skip_chars): continue
+        if re.match(r'^[\d\s\W]+$', line): continue
+        candidates.append(line)
+    if not candidates: return "Research Paper"
+    title = max(candidates, key=len)
+    title = _clean_extracted_text(title)
+    # Check next line for continuation
+    for i, ln in enumerate(lines[:20]):
+        if ln.strip() and ln.strip() in title:
+            if i + 1 < len(lines):
+                nxt = lines[i+1].strip()
+                if nxt and len(nxt) > 10 and not any(nxt.lower().startswith(s) for s in skip_starts) and not any(c in nxt for c in skip_chars):
+                    if nxt[0].islower() or title.endswith(',') or title.endswith(':'):
+                        title += ' ' + nxt
+            break
+    return title[:300].strip()
 
 def fetch_url_text(url: str) -> str:
     blocked_domains = ["mdpi.com", "elsevier.com", "sciencedirect.com", "springer.com", "tandfonline.com", "wiley.com", "ieee.org", "acm.org", "nature.com"]
