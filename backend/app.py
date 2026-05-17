@@ -361,7 +361,7 @@ References:
 
 def extract_title(text: str) -> str:
     """3-layer title extraction — har PDF pe kaam karta hai."""
-    chunk = text[:1500]
+    chunk = text[:3000]
     # Layer 1: Regex patterns
     patterns = [
         r'^([A-Z][A-Z\s:,\-]{20,150}[A-Z])\n',
@@ -376,30 +376,48 @@ def extract_title(text: str) -> str:
             if not any(w in c.lower() for w in bad) and not any(ch in c for ch in skip_chars) and len(c) > 20:
                 return _clean_extracted_text(c)[:300]
     # Layer 2: AI extraction
-    try:
-        raw = ai_chat(f"What is the complete title of this paper?\n\n{chunk}",
-                      system_prompt="Extract ONLY the academic paper title. Return the COMPLETE title. No truncation. No explanation. Just the title.",
-                      temperature=0.1, max_tokens=100)
-        title = raw.strip().strip("\"'")
-        title = re.sub(r'\s+', ' ', title)
-        if len(title) > 15:
-            return title[:300]
-    except:
-        pass
+    wrong = ['special issue','second edition','first edition','volume','journal of','proceedings of']
+    for _ in range(2):
+        try:
+            raw = ai_chat(f"Extract the main paper title:\n\n{chunk}",
+                          system_prompt="Extract the MAIN paper/article/editorial title only. NOT the journal name, NOT the special issue name, NOT section headings. The title is usually the longest prominent heading. Return ONLY the title, nothing else.",
+                          temperature=0.0, max_tokens=80)
+            title = raw.strip().strip("\"'")
+            title = re.sub(r'\s+', ' ', title)
+            if any(w in title.lower() for w in wrong):
+                raw = ai_chat(f"The main article title only (not the special issue name):\n\n{chunk}",
+                              system_prompt="Extract ONLY the editorial/article title. Ignore special issue names, journal names, and edition names.",
+                              temperature=0.0, max_tokens=80)
+                title = raw.strip().strip("\"'")
+                title = re.sub(r'\s+', ' ', title)
+            if len(title) > 15:
+                return title[:300]
+        except:
+            pass
     return "Research Paper"
 
 def extract_title_via_ai(text: str) -> str:
     """Direct AI title extraction (used as fallback)."""
-    chunk = text[:2000]
-    try:
-        raw = ai_chat(f"Extract the academic paper title from this text. Return ONLY the complete title:\n\n{chunk}",
-                      system_prompt="You are a title extractor. Return ONLY the COMPLETE paper title. No explanation.",
-                      temperature=0.1, max_tokens=100)
-        title = raw.strip().strip("\"'")
-        title = re.sub(r'\s+', ' ', title)
-        return title if len(title) > 10 else "Research Paper"
-    except:
-        return "Research Paper"
+    chunk = text[:3000]
+    wrong = ['special issue','second edition','first edition','volume','journal of','proceedings of']
+    for _ in range(2):
+        try:
+            raw = ai_chat(f"Extract the main paper title:\n\n{chunk}",
+                          system_prompt="Extract the MAIN paper/article/editorial title only. NOT the journal name, NOT the special issue name, NOT section headings. Return ONLY the title.",
+                          temperature=0.0, max_tokens=80)
+            title = raw.strip().strip("\"'")
+            title = re.sub(r'\s+', ' ', title)
+            if any(w in title.lower() for w in wrong):
+                raw = ai_chat(f"The main article title only:\n\n{chunk}",
+                              system_prompt="Extract ONLY the editorial/article title. Ignore special issue names, journal names, and edition names.",
+                              temperature=0.0, max_tokens=80)
+                title = raw.strip().strip("\"'")
+                title = re.sub(r'\s+', ' ', title)
+            if len(title) > 15:
+                return title[:300]
+        except:
+            pass
+    return "Research Paper"
 
 def fetch_url_text(url: str) -> str:
     blocked_domains = ["mdpi.com", "elsevier.com", "sciencedirect.com", "springer.com", "tandfonline.com", "wiley.com", "ieee.org", "acm.org", "nature.com"]
