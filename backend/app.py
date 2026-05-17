@@ -360,36 +360,41 @@ References:
     return citations
 
 def extract_title(text: str) -> str:
-    """Universal title extractor for any PDF type."""
-    lines = text.strip().split('\n')
-    skip_starts = ('abstract','received','accepted','published','copyright','editorial','doi','http','volume','journal','page','figure','table','note','keywords','introduction','background','email','correspondence','submitted','this special','this paper','this study','the paper','the study','the authors','in this','we present','we propose','following','based on')
-    skip_chars = ['∗','†','‡','◇','♡','♥','@','.com','doi.org','http','©','ISSN','ISBN']
-    for line in lines[:15]:
-        line = line.strip()
-        if not line or len(line) < 15 or len(line) > 200: continue
-        if any(line.lower().startswith(s) for s in skip_starts): continue
-        if any(c in line for c in skip_chars): continue
-        if re.match(r'^[\d\s\W]+$', line): continue
-        title = _clean_extracted_text(line)
-        # Check next line for continuation
-        for j, ln in enumerate(lines[:20]):
-            if ln.strip() == line:
-                if j + 1 < len(lines):
-                    nxt = lines[j+1].strip()
-                    if nxt and len(nxt) > 10 and not any(nxt.lower().startswith(s) for s in skip_starts) and not any(c in nxt for c in skip_chars):
-                        if nxt[0].islower() or title.endswith(',') or title.endswith(':'):
-                            title += ' ' + nxt
-                break
-        return title[:300].strip()
+    """3-layer title extraction — har PDF pe kaam karta hai."""
+    chunk = text[:1500]
+    # Layer 1: Regex patterns
+    patterns = [
+        r'^([A-Z][A-Z\s:,\-]{20,150}[A-Z])\n',
+        r'^([A-Z][a-zA-Z\s:,\-]{20,150})\n',
+    ]
+    bad = ('received','accepted','published','copyright','editorial','doi','http','volume','journal','page','figure','table','note','keywords','introduction','background','email','correspondence','submitted','this special','this paper','this study','the paper','the study','the authors','in this','we present','we propose','following','based on','abstract')
+    skip_chars = ['∗','†','‡','◇','♡','♥','@','.com','doi.org','http','©','ISSN','ISBN','[1]','[2]','[3]']
+    for pat in patterns:
+        m = re.search(pat, chunk, re.MULTILINE)
+        if m:
+            c = m.group(1).strip()
+            if not any(w in c.lower() for w in bad) and not any(ch in c for ch in skip_chars) and len(c) > 20:
+                return _clean_extracted_text(c)[:300]
+    # Layer 2: AI extraction
+    try:
+        raw = ai_chat(f"What is the complete title of this paper?\n\n{chunk}",
+                      system_prompt="Extract ONLY the academic paper title. Return the COMPLETE title. No truncation. No explanation. Just the title.",
+                      temperature=0.1, max_tokens=100)
+        title = raw.strip().strip("\"'")
+        title = re.sub(r'\s+', ' ', title)
+        if len(title) > 15:
+            return title[:300]
+    except:
+        pass
     return "Research Paper"
 
 def extract_title_via_ai(text: str) -> str:
-    """AI-based title extraction — 100% accurate fallback."""
+    """Direct AI title extraction (used as fallback)."""
     chunk = text[:2000]
     try:
-        raw = ai_chat(f"Extract the academic paper title from this text. Return ONLY the title, nothing else:\n\n{chunk}",
-                      system_prompt="You are a title extractor. Return ONLY the paper title. Nothing else. No explanation. No punctuation at end.",
-                      temperature=0.1, max_tokens=50)
+        raw = ai_chat(f"Extract the academic paper title from this text. Return ONLY the complete title:\n\n{chunk}",
+                      system_prompt="You are a title extractor. Return ONLY the COMPLETE paper title. No explanation.",
+                      temperature=0.1, max_tokens=100)
         title = raw.strip().strip("\"'")
         title = re.sub(r'\s+', ' ', title)
         return title if len(title) > 10 else "Research Paper"

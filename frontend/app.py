@@ -358,7 +358,7 @@ def show_paper(s, show_chat=True):
 
     st.markdown(f"""
     <div class="card">
-        <h2 style="margin:0 0 4px;">{s['title']}</h2>
+        <h1 style="font-size:1.7rem;font-weight:700;line-height:1.3;word-wrap:break-word;white-space:normal;overflow:visible;margin:0 0 8px;">{s['title']}</h1>
         <p class="meta">
             <span class="badge">{lang_label.get(s['language'],s['language'])}</span>
             <span class="badge">{type_label.get(s['summary_type'],s['summary_type'])}</span>
