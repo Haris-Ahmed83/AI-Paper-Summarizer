@@ -108,7 +108,7 @@ for k in GROQ_KEYS:
 for k in GROK_KEYS:
     PROVIDERS.append({"type":"grok","key":k,"model":GROK_MODEL})
 for k in GEMINI_KEYS:
-    PROVIDERS.append({"type":"gemini","key":k,"model":"gemini-2.5-flash"})
+    PROVIDERS.append({"type":"gemini","key":k,"model":"gemini-1.5-flash"})
 if not PROVIDERS:
     raise RuntimeError("No API keys found. Set GROQ_API_KEY, GEMINI_API_KEY, or GROK_API_KEY.")
 
