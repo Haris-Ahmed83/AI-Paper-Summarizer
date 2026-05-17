@@ -193,7 +193,7 @@ def extract_text_pdf(path: str) -> str:
         import pdfplumber
         with pdfplumber.open(path) as pdf:
             for page in pdf.pages:
-                page_text = page.extract_text()
+                page_text = page.extract_text(x_tolerance=1, y_tolerance=3, layout=True)
                 if page_text:
                     text += page_text + "\n"
         if len(text.strip()) > 100:
@@ -222,17 +222,14 @@ def _clean_extracted_text(text: str) -> str:
     text = re.sub(r'(?<=[a-z])([A-Z]{2,})', r' \1', text)
     # Fix ordinal suffixes merged: "21stCentury" → "21st Century"
     text = re.sub(r'(?<=\d)(st|nd|rd|th)(?=[A-Z])', r'\1 ', text)
-    # Fix common merged patterns from PDF extraction
+    # Fix specific known PDF artifacts (exact strings only - no generic word splitting)
     text = re.sub(r'accessedon', 'accessed on', text)
     text = re.sub(r'Availableonline', 'Available online', text)
     text = re.sub(r'\be\s(\d+)', r'e\1', text)
-    # Fix common short words merged: XandY, XintheY, XfortheY, XinY, XtoY, XforY, XofY, XbyY
-    text = re.sub(r'(?<=[a-z])(and|the|for|are|from|with|this|that)(?=[A-Za-z])', r' \1 ', text)
-    text = re.sub(r'(?<=[a-z])(in|to|of|on|at|by|is)(?=[A-Za-z])', r' \1 ', text)
+    # Fix colon missing space: "Digital:Mobile" → "Digital: Mobile"
+    text = re.sub(r'(?<=[a-zA-Z]):(?=[A-Z])', r': ', text)
     # Clean up double spaces
     text = re.sub(r'\s{2,}', ' ', text)
-    # Fix colon missing space: "Digital:Mobile" → "Digital: Mobile"
-    text = re.sub(r'(?<=[a-zA-Z]):(?=[A-Za-z])', r': ', text)
     return text
 
 def extract_text_txt(path: str) -> str:
@@ -274,7 +271,6 @@ def extract_citations(text: str) -> list:
                 if current.strip(): refs.append(current.strip())
                 current = re.sub(r'^\[\d+\]\s*|^\d+\.\s*', '', stripped)
             else:
-                # Continuation of current reference
                 current += " " + stripped
         if current.strip(): refs.append(current.strip())
         # Deduplicate + clean each ref
@@ -286,9 +282,6 @@ def extract_citations(text: str) -> list:
             if norm in seen: continue
             seen.add(norm)
             if len(r) > 30 and re.search(r'\d{4}', r):
-                # Fix common merged words in ref text
-                r = re.sub(r'(?<=[a-z])and(?=[A-Z])', r' and ', r)
-                r = re.sub(r'(?<=[a-z])(the|for|are|from|with|this|that)(?=[A-Z])', r' \1 ', r)
                 # Strip raw URLs from body, link DOIs separately
                 raw_doi = ""
                 doi_m = re.search(r'(https?://doi\.org/\S+)', r)
@@ -299,7 +292,9 @@ def extract_citations(text: str) -> list:
                 r = re.sub(r'\s+', ' ', r).strip()
                 r = re.sub(r'[,;:\s]+$', '', r)
                 # Fix common reference artifacts
-                r = r.replace('[Cross Ref]', '[CrossRef]').replace('[Pub Med]', '[PubMed]').replace('[Pub Med Central]', '[PMC]')
+                r = r.replace('[Cross Ref]', '[CrossRef]')
+                r = r.replace('[Pub Med]', '[PubMed]')
+                r = r.replace('[Pub Med Central]', '[PMC]')
                 r = re.sub(r'(?<=[a-zA-Z])\.(?=[A-Z][a-z])', '. ', r)
                 if raw_doi:
                     r = re.sub(r'DOI[:\s]*$', '', r).strip()
@@ -310,6 +305,28 @@ def extract_citations(text: str) -> list:
     pattern = r'(?:https?://doi\.org/\S+|\(?\d{4}\)?\.\s+[A-Z][^.]*?Journal[^.]*\.)'
     matches = re.findall(pattern, text)
     return [m.strip() for m in matches[:10]] if matches else []
+
+def clean_citations_with_ai(citations: list) -> list:
+    """Use AI to clean and fix spacing in extracted references."""
+    if not citations:
+        return citations
+    try:
+        block = "\n".join(f"{i+1}. {r}" for i, r in enumerate(citations))
+        prompt = f"""Fix spacing and formatting in these academic references. Fix merged words (e.g. "Healthand" → "Health and"), split joined words properly. Keep all content unchanged - only fix spacing. Return as a numbered list preserving the original numbering.
+
+References:
+{block}"""
+        resp = ai_chat(prompt)
+        cleaned = []
+        for line in resp.strip().split("\n"):
+            line = re.sub(r'^\d+[\.\)]\s*', '', line).strip()
+            if line and len(line) > 30:
+                cleaned.append(line)
+        if len(cleaned) >= len(citations) // 2:
+            return cleaned[:len(citations)]
+    except:
+        pass
+    return citations
 
 def extract_title(text: str) -> str:
     lines = [l.strip() for l in text.split("\n") if l.strip()]
@@ -550,7 +567,7 @@ Provide the final merged analysis with these sections:
 
     # Final assembly
     all_data["title"] = title
-    all_data["citations"] = extract_citations(text)
+    all_data["citations"] = clean_citations_with_ai(extract_citations(text))
     all_data["summary"] = all_data["summary"].strip() or title
     return all_data
 @app.get("/health")
