@@ -93,33 +93,33 @@ def init_db():
             except: pass
 init_db()
 
-# ─── Multi-Provider AI Call (Grok primary — recommended) ───
+# ─── Multi-Provider AI Call ───
 PROVIDERS = []
 for k in GROK_KEYS:
     PROVIDERS.append({"type":"grok","key":k,"model":GROK_MODEL})
-if not PROVIDERS:
-    for k in GROQ_KEYS:
-        PROVIDERS.append({"type":"groq","key":k,"model":GROQ_MODEL})
-    for k in GEMINI_KEYS:
-        PROVIDERS.append({"type":"gemini","key":k,"model":GEMINI_MODEL})
+for k in GROQ_KEYS:
+    PROVIDERS.append({"type":"groq","key":k,"model":GROQ_MODEL})
+for k in GEMINI_KEYS:
+    PROVIDERS.append({"type":"gemini","key":k,"model":GEMINI_MODEL})
 
 # ─── AI Chat ───
-def ai_chat(prompt: str, retry: int = 3) -> str:
+def ai_chat(prompt: str, retry: int = 1) -> str:
+    errors = {}
     for attempt in range(retry + 1):
         last_err = None
-        for p in PROVIDERS:  # Always start from Groq (index 0)
+        for p in PROVIDERS:
             try:
                 if p["type"] == "gemini":
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{p['model']}:generateContent?key={p['key']}"
                     payload = {"contents": [{"parts": [{"text": prompt}]}]}
                     resp = http_requests.post(url, json=payload, timeout=90)
                     if resp.status_code == 429:
-                        last_err = "QUOTA_EXCEEDED"; continue
+                        last_err = f"gemini_quota"; errors[p['key'][:8]] = f"429"; continue
                     if resp.status_code != 200:
-                        err = resp.text[:300]
+                        err = resp.text[:200]
                         if "quota" in err.lower():
-                            last_err = "QUOTA_EXCEEDED"; continue
-                        raise Exception(f"Gemini error ({resp.status_code}): {err}")
+                            last_err = f"gemini_quota"; errors[p['key'][:8]] = err[:80]; continue
+                        raise Exception(f"Gemini err {resp.status_code}: {err}")
                     data = resp.json()
                     candidates = data.get("candidates", [])
                     if not candidates:
@@ -132,12 +132,12 @@ def ai_chat(prompt: str, retry: int = 3) -> str:
                     payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096}
                     resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
                     if resp.status_code == 429:
-                        last_err = "QUOTA_EXCEEDED"; continue
+                        last_err = f"grok_quota"; errors["grok"] = f"429"; continue
                     if resp.status_code != 200:
-                        err = resp.text[:300]
+                        err = resp.text[:200]
                         if "quota" in err.lower() or "rate" in err.lower():
-                            last_err = "QUOTA_EXCEEDED"; continue
-                        raise Exception(f"Grok error ({resp.status_code}): {err}")
+                            last_err = f"grok_quota"; errors["grok"] = err[:80]; continue
+                        raise Exception(f"Grok err {resp.status_code}: {err}")
                     data = resp.json()
                     choices = data.get("choices", [])
                     if not choices:
@@ -150,12 +150,12 @@ def ai_chat(prompt: str, retry: int = 3) -> str:
                     payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096}
                     resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
                     if resp.status_code == 429:
-                        last_err = "QUOTA_EXCEEDED"; continue
+                        last_err = f"groq_quota"; errors["groq"] = f"429"; continue
                     if resp.status_code != 200:
-                        err = resp.text[:300]
+                        err = resp.text[:200]
                         if "quota" in err.lower() or "rate" in err.lower():
-                            last_err = "QUOTA_EXCEEDED"; continue
-                        raise Exception(f"Groq error ({resp.status_code}): {err}")
+                            last_err = f"groq_quota"; errors["groq"] = err[:80]; continue
+                        raise Exception(f"Groq err {resp.status_code}: {err}")
                     data = resp.json()
                     choices = data.get("choices", [])
                     if not choices:
@@ -163,12 +163,14 @@ def ai_chat(prompt: str, retry: int = 3) -> str:
                     return choices[0].get("message",{}).get("content","")
             except Exception as e:
                 last_err = str(e)
+                errors[p.get('type','?')] = str(e)[:80]
                 continue
         if attempt < retry:
             import time
             time.sleep(30)
         else:
-            raise Exception(last_err or "All providers exhausted")
+            err_msg = str(errors)
+            raise Exception(f"ALL_FAILED: {err_msg}")
 
 # ─── Models ───
 class SummaryResponse(BaseModel):
@@ -532,6 +534,7 @@ TEXT:
                 elif isinstance(data.get(k), list):
                     all_data[k].extend(data.get(k, []))
         except Exception as e:
+            if str(e).startswith("ALL_FAILED"): raise
             if str(e) == "QUOTA_EXCEEDED": raise
             if str(e) == "MODEL_ERROR": raise
 
@@ -626,6 +629,7 @@ async def summarize(file: UploadFile = File(...), language: str = Form("english"
     except HTTPException: raise
     except Exception as e:
         err = str(e)
+        if err.startswith("ALL_FAILED"): raise HTTPException(429, f"All providers failed: {err}")
         if "QUOTA" in err: raise HTTPException(429, "AI API quota exceeded. Wait 1 min or change API key.")
         if "MODEL" in err: raise HTTPException(400, "Model error. Try again or use a different file.")
         raise HTTPException(500, f"AI error: {err}")
