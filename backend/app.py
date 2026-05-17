@@ -93,16 +93,15 @@ def init_db():
             except: pass
 init_db()
 
-# ─── Multi-Provider AI Call (Groq only — most reliable) ───
+# ─── Multi-Provider AI Call (Grok primary — recommended) ───
 PROVIDERS = []
-for k in GROQ_KEYS:
-    PROVIDERS.append({"type":"groq","key":k,"model":GROQ_MODEL})
-# Fallback to Gemini if no Groq keys
+for k in GROK_KEYS:
+    PROVIDERS.append({"type":"grok","key":k,"model":GROK_MODEL})
 if not PROVIDERS:
+    for k in GROQ_KEYS:
+        PROVIDERS.append({"type":"groq","key":k,"model":GROQ_MODEL})
     for k in GEMINI_KEYS:
         PROVIDERS.append({"type":"gemini","key":k,"model":GEMINI_MODEL})
-    for k in GROK_KEYS:
-        PROVIDERS.append({"type":"grok","key":k,"model":GROK_MODEL})
 
 # ─── AI Chat ───
 def ai_chat(prompt: str, retry: int = 3) -> str:
