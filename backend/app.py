@@ -320,18 +320,24 @@ References:
     return citations
 
 def extract_title(text: str) -> str:
-    lines = [l.strip() for l in text.split("\n") if l.strip()]
-    skip_prefixes = ("received:", "accepted:", "published:", "copyright:", "licensee", "editorial", "article", "open access", "creative commons", "cc by", "doi:", "correspondence", "submitted", "reviewed", "revised", "available")
-    author_chars = set('∗†‡◇♡♥@')
-    for l in lines:
-        if any(c in l for c in author_chars):
+    lines = text.strip().split('\n')
+    for line in lines:
+        line = line.strip()
+        # Skip lines with special symbols (authors)
+        if any(c in line for c in ['∗', '†', '‡', '◇', '♡', '♥', '@']):
             continue
-        if '.com' in l.lower() or '.edu' in l.lower():
+        # Skip email/URL lines
+        if '.com' in line.lower() or '.edu' in line.lower():
             continue
-        if len(l) > 50 and len(l) < 300 and not any(l.lower().startswith(p) for p in skip_prefixes):
-            return l[:250]
-    for l in lines:
-        if 10 < len(l) < 200: return l[:150]
+        # Skip "Abstract" or metadata lines
+        if line.lower().startswith('abstract'):
+            continue
+        if line.lower().startswith(('received:', 'accepted:', 'published:', 'copyright:', 'doi:', 'correspondence', 'submitted')):
+            continue
+        # Skip short lines
+        if len(line) < 20:
+            continue
+        return line[:250]
     return "Untitled Document"
 
 def fetch_url_text(url: str) -> str:
