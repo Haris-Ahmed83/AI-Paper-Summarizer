@@ -22,21 +22,32 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "outputs"
 DB_PATH = BASE_DIR / "history.db"
+
+# Gemini keys
 GEMINI_KEYS = [k.strip() for k in (
     os.environ.get("GEMINI_API_KEYS") or
     os.environ.get("GEMINI_API_KEY") or
     ""
 ).split(",") if k.strip()]
-
-# Also pick up GEMINI_API_KEY_2, GEMINI_API_KEY_3, ... for HF Spaces
 for i in range(2, 10):
     k = os.environ.get(f"GEMINI_API_KEY_{i}")
     if k: GEMINI_KEYS.append(k.strip())
 
-if not GEMINI_KEYS:
-    raise RuntimeError("GEMINI_API_KEY environment variable not set")
+# Grok (xAI) keys
+GROK_KEYS = [k.strip() for k in (
+    os.environ.get("GROK_API_KEYS") or
+    os.environ.get("GROK_API_KEY") or
+    ""
+).split(",") if k.strip()]
+for i in range(2, 10):
+    k = os.environ.get(f"GROK_API_KEY_{i}")
+    if k: GROK_KEYS.append(k.strip())
+
+if not GEMINI_KEYS and not GROK_KEYS:
+    raise RuntimeError("At least one API key required: GEMINI_API_KEY or GROK_API_KEY")
 
 GEMINI_MODEL = "gemini-2.5-flash"
+GROK_MODEL = os.environ.get("GROK_MODEL", "grok-3-mini")
 MAX_FILE_MB = int(os.environ.get("MAX_FILE_MB", "50"))
 CHUNK_SIZE = 5000
 
@@ -71,32 +82,59 @@ def init_db():
             except: pass
 init_db()
 
-# ─── Gemini REST API Call ───
-_gemini_idx = 0
-def gemini_chat(prompt: str) -> str:
-    global _gemini_idx
+# ─── Multi-Provider AI Call (Gemini + Grok) ───
+PROVIDERS = []
+for k in GEMINI_KEYS:
+    PROVIDERS.append({"type":"gemini","key":k,"model":GEMINI_MODEL})
+for k in GROK_KEYS:
+    PROVIDERS.append({"type":"grok","key":k,"model":GROK_MODEL})
+
+_provider_idx = 0
+def ai_chat(prompt: str) -> str:
+    global _provider_idx
     last_err = None
-    for _ in range(len(GEMINI_KEYS)):
-        key = GEMINI_KEYS[_gemini_idx % len(GEMINI_KEYS)]
-        _gemini_idx += 1
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={key}"
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        resp = http_requests.post(url, json=payload, timeout=60)
-        if resp.status_code == 429:
-            last_err = "QUOTA_EXCEEDED"
+    for _ in range(len(PROVIDERS)):
+        p = PROVIDERS[_provider_idx % len(PROVIDERS)]
+        _provider_idx += 1
+        try:
+            if p["type"] == "gemini":
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{p['model']}:generateContent?key={p['key']}"
+                payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                resp = http_requests.post(url, json=payload, timeout=90)
+                if resp.status_code == 429:
+                    last_err = "QUOTA_EXCEEDED"; continue
+                if resp.status_code != 200:
+                    err = resp.text[:300]
+                    if "quota" in err.lower():
+                        last_err = "QUOTA_EXCEEDED"; continue
+                    raise Exception(f"Gemini error ({resp.status_code}): {err}")
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if not candidates:
+                    raise Exception("Empty Gemini response")
+                return candidates[0].get("content",{}).get("parts",[{}])[0].get("text","")
+
+            elif p["type"] == "grok":
+                url = "https://api.x.ai/v1/chat/completions"
+                headers = {"Authorization": f"Bearer {p['key']}", "Content-Type": "application/json"}
+                payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096}
+                resp = http_requests.post(url, json=payload, headers=headers, timeout=90)
+                if resp.status_code == 429:
+                    last_err = "QUOTA_EXCEEDED"; continue
+                if resp.status_code != 200:
+                    err = resp.text[:300]
+                    if "quota" in err.lower() or "rate" in err.lower():
+                        last_err = "QUOTA_EXCEEDED"; continue
+                    raise Exception(f"Grok error ({resp.status_code}): {err}")
+                data = resp.json()
+                choices = data.get("choices", [])
+                if not choices:
+                    raise Exception("Empty Grok response")
+                return choices[0].get("message",{}).get("content","")
+        except Exception as e:
+            last_err = str(e)
             continue
-        if resp.status_code != 200:
-            err = resp.text[:300]
-            if "quota" in err.lower():
-                last_err = "QUOTA_EXCEEDED"
-                continue
-            raise Exception(f"API error ({resp.status_code}): {err}")
-        data = resp.json()
-        candidates = data.get("candidates", [])
-        if not candidates:
-            raise Exception("Empty Gemini response")
-        return candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-    raise Exception(last_err or "All API keys exhausted")
+    raise Exception(last_err or "All providers exhausted")
 
 # ─── Models ───
 class SummaryResponse(BaseModel):
@@ -231,7 +269,7 @@ PARTIAL TEXT:
 Return ONLY valid JSON:
 {{"summary":"...", "methodology":"...", "key_findings":["..."], "research_gaps":["..."], "future_directions":["..."], "strengths":["..."], "weaknesses":["..."], "conclusion":"...", "difficulty_level":"...", "key_terms":["...: ..."], "key_points":["..."], "citations":["..."]}}"""
         try:
-            raw = gemini_chat(prompt)
+            raw = ai_chat(prompt)
             data = parse_json_from_text(raw)
             all_summaries.append(data.get("summary", ""))
             if data.get("methodology"): all_methodology.append(data["methodology"])
@@ -270,7 +308,7 @@ Conclusions: {chr(10).join(f'- {c}' for c in all_conclusions[-2:]) if all_conclu
 Return ONLY valid JSON:
 {{"title":"...", "summary":"...", "methodology":"...", "key_findings":["..."], "research_gaps":["..."], "future_directions":["..."], "strengths":["..."], "weaknesses":["..."], "conclusion":"...", "difficulty_level":"...", "key_terms":["...: ..."], "key_points":["..."], "citations":["..."]}}"""
         try:
-            raw = gemini_chat(merge_prompt)
+            raw = ai_chat(merge_prompt)
             merged = parse_json_from_text(raw)
             return {
                 "title": merged.get("title", "Merged Document"),
@@ -330,7 +368,7 @@ async def summarize(file: UploadFile = File(...), language: str = Form("english"
     except HTTPException: raise
     except Exception as e:
         err = str(e)
-        if "QUOTA" in err: raise HTTPException(429, "Gemini API quota exceeded. Wait 1 min or change API key.")
+        if "QUOTA" in err: raise HTTPException(429, "AI API quota exceeded. Wait 1 min or change API key.")
         if "MODEL" in err: raise HTTPException(400, "Model error. Try again or use a different file.")
         raise HTTPException(500, f"AI error: {err}")
     elapsed = (datetime.utcnow() - start).total_seconds()
@@ -363,7 +401,7 @@ async def summarize_url(body: URLInput):
     except HTTPException: raise
     except Exception as e:
         err = str(e)
-        if "QUOTA" in err: raise HTTPException(429, "Gemini API quota exceeded")
+        if "QUOTA" in err: raise HTTPException(429, "AI API quota exceeded")
         if "MODEL" in err: raise HTTPException(400, "Model error")
         raise HTTPException(500, f"AI error: {err}")
     elapsed = (datetime.utcnow() - start).total_seconds()
@@ -453,11 +491,11 @@ Question: {body.question}
 
 Answer based ONLY on the paper content above. Be specific and cite evidence. If the paper doesn't contain the answer, say so."""
     try:
-        raw = gemini_chat(prompt)
+        raw = ai_chat(prompt)
         return {"answer": raw, "question": body.question}
     except Exception as e:
         err = str(e)
-        if "QUOTA" in err: raise HTTPException(429, "Gemini API quota exceeded")
+        if "QUOTA" in err: raise HTTPException(429, "AI API quota exceeded")
         raise HTTPException(500, f"AI error: {err}")
 
 class CompareInput(BaseModel):
@@ -490,11 +528,11 @@ Analyze:
 
 Be specific and objective."""
     try:
-        raw = gemini_chat(prompt)
+        raw = ai_chat(prompt)
         return {"comparison": raw, "paper1": p1, "paper2": p2}
     except Exception as e:
         err = str(e)
-        if "QUOTA" in err: raise HTTPException(429, "Gemini API quota exceeded")
+        if "QUOTA" in err: raise HTTPException(429, "AI API quota exceeded")
         raise HTTPException(500, f"AI error: {err}")
 
 # ─── ArXiv Search ───
@@ -548,11 +586,11 @@ Create:
 
 Make it specific to this paper's domain. Write in formal academic English."""
     try:
-        raw = gemini_chat(prompt)
+        raw = ai_chat(prompt)
         return {"proposal": raw, "paper_title": r[0]}
     except Exception as e:
         err = str(e)
-        if "QUOTA" in err: raise HTTPException(429, "Gemini API quota exceeded")
+        if "QUOTA" in err: raise HTTPException(429, "AI API quota exceeded")
         raise HTTPException(500, f"AI error: {err}")
 
 # ─── ArXiv Search ───
