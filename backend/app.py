@@ -178,13 +178,45 @@ def chunk_text(text: str, size: int = CHUNK_SIZE) -> list:
     return [" ".join(words[i:i+size]) for i in range(0, len(words), size)]
 
 def extract_citations(text: str) -> list:
-    patterns = [r'\[\d+(?:,\s*\d+)*\]', r'\([\w\s,.\-]+,?\s*\d{4}\)', r'(?:https?://\S+)']
-    cites = []
-    for p in patterns: cites.extend(re.findall(p, text))
-    return list(set(cites))[:20]
+    lines = text.split("\n")
+    # Find the references section
+    ref_start = None
+    for i, l in enumerate(lines):
+        if re.match(r'^(references|bibliography|works cited)\s*$', l.strip(), re.I):
+            ref_start = i
+            break
+    if ref_start is not None:
+        refs = []
+        current = ""
+        for l in lines[ref_start+1:]:
+            if not l.strip():
+                if current.strip(): refs.append(current.strip())
+                current = ""
+                continue
+            if re.match(r'^\[\d+\]', l.strip()) and current.strip():
+                refs.append(current.strip())
+                current = l.strip()
+            else:
+                current += " " + l.strip()
+        if current.strip(): refs.append(current.strip())
+        # Clean up incomplete refs
+        clean = []
+        for r in refs:
+            r = r.strip()
+            if len(r) > 20 and re.search(r'\d{4}', r):
+                clean.append(r)
+        return clean[:15] if clean else []
+    # Fallback: find DOI/URL patterns in full text
+    pattern = r'(?:https?://doi\.org/\S+|\(?\d{4}\)?\.\s+[A-Z][^.]*?Journal[^.]*\.)'
+    matches = re.findall(pattern, text)
+    return [m.strip() for m in matches[:10]] if matches else []
 
 def extract_title(text: str) -> str:
     lines = [l.strip() for l in text.split("\n") if l.strip()]
+    skip_prefixes = ("received:", "accepted:", "published:", "copyright:", "licensee", "editorial", "article", "open access", "creative commons", "cc by", "doi:", "correspondence", "submitted", "reviewed", "revised", "available")
+    for l in lines:
+        if len(l) > 50 and len(l) < 300 and not any(l.lower().startswith(p) for p in skip_prefixes):
+            return l[:250]
     for l in lines:
         if 10 < len(l) < 200: return l[:150]
     return "Untitled Document"
@@ -242,113 +274,101 @@ def generate_summary(text: str, lang: str = "english", stype: str = "detailed") 
 
     chunks = chunk_text(text, CHUNK_SIZE)
 
-    all_summaries, all_methodology, all_findings = [], [], []
-    all_gaps, all_conclusions, all_terms, all_points = [], [], [], []
-    all_strengths, all_weaknesses, all_future = [], [], []
+    # Extract title from full text
+    title = extract_title(text)
 
-    for idx, chunk in enumerate(chunks):
-        prompt = f"""You are analyzing PART {idx+1}/{len(chunks)} of a research paper/article for an MPhil/PhD student.
+    # Process first chunk with title
+    first_prompt = f"""You are an MPhil/PhD research assistant. Analyze this research paper and produce a structured analysis.
+
+Paper Title: {title}
 
 {type_inst}
 {lang_inst}
 
-Extract ALL of the following from this portion (be specific, not vague):
+Extract and return ONLY valid JSON with these exact fields:
+{{
+  "summary": "coherent paragraph summarizing this section",
+  "methodology": "research design, methods, sample",
+  "key_findings": ["finding 1", "finding 2"],
+  "research_gaps": ["gap 1"],
+  "future_directions": ["direction 1"],
+  "strengths": ["strength 1"],
+  "weaknesses": ["weakness 1"],
+  "conclusion": "authors' conclusion",
+  "difficulty_level": "Beginner/Intermediate/Advanced",
+  "key_terms": ["term: definition"],
+  "key_points": ["bullet point 1"]
+}}
 
-1. SUMMARY — Coherent paragraph
-2. METHODOLOGY — Design, sample, instruments, analysis methods
-3. KEY FINDINGS — Specific results, numbers, statistics, evidence
-4. RESEARCH GAPS — Limitations, what's missing
-5. FUTURE DIRECTIONS — Authors' suggested future work
-6. STRENGTHS — What makes this paper strong/rigorous
-7. WEAKNESSES — Methodological flaws, clarity issues, biases
-8. CONCLUSION — Authors' final takeaway
-9. KEY TERMS — Important concepts with definitions
-10. DIFFICULTY LEVEL — Is this paper "Beginner", "Intermediate", or "Advanced"?
-11. KEY POINTS — 2-3 short takeaway bullets
-12. CITATIONS — Extract references in APA format: "Author, A. (Year). Title of article. Journal Name, Volume(Issue), Pages. https://doi.org/xxx"
+TEXT:
+{chunks[0]}
+Return ONLY the JSON object. No markdown, no explanation."""
 
-PARTIAL TEXT:
+    all_data = {"summary":"","methodology":"","key_findings":[],"research_gaps":[],"future_directions":[],"strengths":[],"weaknesses":[],"conclusion":"","difficulty_level":"Intermediate","key_terms":[],"key_points":[],"citations":[]}
+
+    for idx, chunk in enumerate(chunks):
+        if idx == 0:
+            prompt = first_prompt
+        else:
+            prompt = f"""Continue analyzing PART {idx+1}/{len(chunks)} of this research paper.
+
+Extract and return ONLY valid JSON:
+{{"summary":"...", "methodology":"...", "key_findings":["..."], "research_gaps":["..."], "future_directions":["..."], "strengths":["..."], "weaknesses":["..."], "conclusion":"...", "difficulty_level":"...", "key_terms":["...: ..."], "key_points":["..."]}}
+
+TEXT:
 {chunk}
+Return ONLY the JSON object."""
 
-Return ONLY valid JSON:
-{{"summary":"...", "methodology":"...", "key_findings":["..."], "research_gaps":["..."], "future_directions":["..."], "strengths":["..."], "weaknesses":["..."], "conclusion":"...", "difficulty_level":"...", "key_terms":["...: ..."], "key_points":["..."], "citations":["..."]}}"""
         try:
             raw = ai_chat(prompt)
             data = parse_json_from_text(raw)
-            all_summaries.append(data.get("summary", ""))
-            if data.get("methodology"): all_methodology.append(data["methodology"])
-            all_findings.extend(data.get("key_findings", []))
-            all_gaps.extend(data.get("research_gaps", []))
-            all_future.extend(data.get("future_directions", []))
-            all_strengths.extend(data.get("strengths", []))
-            all_weaknesses.extend(data.get("weaknesses", []))
-            if data.get("conclusion"): all_conclusions.append(data["conclusion"])
-            all_terms.extend(data.get("key_terms", []))
-            all_points.extend(data.get("key_points", []))
+            for k in all_data:
+                if k == "summary":
+                    all_data["summary"] += "\n" + data.get("summary", "")
+                elif k == "methodology":
+                    if data.get("methodology"): all_data["methodology"] = data["methodology"]
+                elif k == "conclusion":
+                    if data.get("conclusion"): all_data["conclusion"] = data["conclusion"]
+                elif k == "difficulty_level":
+                    if data.get("difficulty_level"): all_data["difficulty_level"] = data["difficulty_level"]
+                elif isinstance(data.get(k), list):
+                    all_data[k].extend(data.get(k, []))
         except Exception as e:
             if str(e) == "QUOTA_EXCEEDED": raise
             if str(e) == "MODEL_ERROR": raise
-            continue
 
-    # Merge chunks
+    # Merge chunks for multi-chunk papers
     if len(chunks) > 1 and stype != "bullet":
-        parts = "\n".join(f"Part {i+1}: {s}" for i, s in enumerate(all_summaries) if s)
-        merge_prompt = f"""Merge these partial summaries into ONE complete research analysis for an MPhil student. Remove redundancy. Keep the most valuable content.
+        parts = all_data["summary"][:3000] if len(all_data["summary"]) > 3000 else all_data["summary"]
+        merge_prompt = f"""Merge these partial findings into ONE complete research analysis for an MPhil/PhD student.
 
-{lang_inst}
-
-Parts:
-{parts}
-
-Extracted elements to incorporate:
-Methodology: {chr(10).join(f'- {m}' for m in all_methodology[-3:]) if all_methodology else 'N/A'}
-Findings: {chr(10).join(f'- {f}' for f in all_findings[:8]) if all_findings else 'N/A'}
-Gaps: {chr(10).join(f'- {g}' for g in all_gaps[:5]) if all_gaps else 'N/A'}
-Future work: {chr(10).join(f'- {f}' for f in all_future[:5]) if all_future else 'N/A'}
-Strengths: {chr(10).join(f'- {s}' for s in all_strengths[:5]) if all_strengths else 'N/A'}
-Weaknesses: {chr(10).join(f'- {w}' for w in all_weaknesses[:5]) if all_weaknesses else 'N/A'}
-Conclusions: {chr(10).join(f'- {c}' for c in all_conclusions[-2:]) if all_conclusions else 'N/A'}
+Title: {title}
+Findings: {chr(10).join(f'- {f}' for f in all_data['key_findings'][:8]) if all_data['key_findings'] else 'N/A'}
+Gaps: {chr(10).join(f'- {g}' for g in all_data['research_gaps'][:5]) if all_data['research_gaps'] else 'N/A'}
+Future: {chr(10).join(f'- {f}' for f in all_data['future_directions'][:5]) if all_data['future_directions'] else 'N/A'}
+Methodology: {all_data['methodology'][:500] if all_data['methodology'] else 'N/A'}
+Summary parts: {parts[:2000]}
 
 Return ONLY valid JSON:
-{{"title":"...", "summary":"...", "methodology":"...", "key_findings":["..."], "research_gaps":["..."], "future_directions":["..."], "strengths":["..."], "weaknesses":["..."], "conclusion":"...", "difficulty_level":"...", "key_terms":["...: ..."], "key_points":["..."], "citations":["..."]}}"""
+{{"summary":"master summary with all key info", "methodology":"", "key_findings":["..."], "research_gaps":["..."], "future_directions":["..."], "strengths":["..."], "weaknesses":["..."], "conclusion":"", "difficulty_level":"", "key_terms":["...: ..."], "key_points":["..."]}}
+Return ONLY the JSON object."""
         try:
             raw = ai_chat(merge_prompt)
             merged = parse_json_from_text(raw)
-            return {
-                "title": merged.get("title", "Merged Document"),
-                "summary": merged.get("summary", "\n\n".join(all_summaries)),
-                "methodology": merged.get("methodology", "; ".join(all_methodology[-2:])),
-                "key_findings": merged.get("key_findings", all_findings[:8]),
-                "research_gaps": merged.get("research_gaps", all_gaps[:5]),
-                "future_directions": merged.get("future_directions", all_future[:5]),
-                "strengths": merged.get("strengths", all_strengths[:5]),
-                "weaknesses": merged.get("weaknesses", all_weaknesses[:5]),
-                "conclusion": merged.get("conclusion", "; ".join(all_conclusions[-2:])),
-                "difficulty_level": merged.get("difficulty_level", "Intermediate"),
-                "key_terms": merged.get("key_terms", all_terms[:8]),
-                "key_points": merged.get("key_points", all_points[:8]),
-                "citations": extract_citations(text),
-            }
+            for k in all_data:
+                if k == "citations": continue
+                if isinstance(merged.get(k), str) and merged[k]:
+                    all_data[k] = merged[k]
+                elif isinstance(merged.get(k), list) and merged[k]:
+                    all_data[k] = merged[k]
         except:
             pass
 
-    return {
-        "title": extract_title(text),
-        "summary": "\n\n".join(all_summaries) if all_summaries else text[:500],
-        "methodology": "; ".join(all_methodology[-2:]),
-        "key_findings": all_findings[:8],
-        "research_gaps": all_gaps[:5],
-        "future_directions": all_future[:5],
-        "strengths": all_strengths[:5],
-        "weaknesses": all_weaknesses[:5],
-        "conclusion": "; ".join(all_conclusions[-2:]),
-        "difficulty_level": "Intermediate",
-        "key_terms": all_terms[:8],
-        "key_points": all_points[:8],
-        "citations": extract_citations(text),
-    }
-
-# ─── API Routes ───
+    # Final assembly
+    all_data["title"] = title
+    all_data["citations"] = extract_citations(text)
+    all_data["summary"] = all_data["summary"].strip() or title
+    return all_data
 @app.get("/health")
 def health():
     return {"message": "AI Paper Summarizer Pro", "version": "3.1.0", "status": "running"}
@@ -478,22 +498,30 @@ class AskInput(BaseModel):
 @app.post("/ask/{sid}")
 def ask_paper(sid: str, body: AskInput):
     with sqlite3.connect(DB_PATH) as conn:
-        r = conn.execute("SELECT title, source_text FROM summaries WHERE id=?", (sid,)).fetchone()
+        r = conn.execute("SELECT title, source_text, summary, key_findings, methodology FROM summaries WHERE id=?", (sid,)).fetchone()
     if not r: raise HTTPException(404, "Paper not found")
     title, paper_text = r[0], r[1] or ""
+    summary, findings, methodology = r[2] or "", r[3] or "[]", r[4] or ""
     if not paper_text.strip():
         raise HTTPException(400, "No source text available for this paper")
-    # Take last ~4000 words for context
-    words = paper_text.split()
-    context = " ".join(words[-4000:]) if len(words) > 4000 else paper_text
-    prompt = f"""You are analyzing the research paper "{title}".
+    def j(v):
+        try: return json.loads(v) if isinstance(v, str) else v
+        except: return []
+    findings_str = "\n".join(f"- {f}" for f in j(findings)[:5])
+    context_words = paper_text.split()
+    context = " ".join(context_words[-3000:]) if len(context_words) > 3000 else paper_text
+    prompt = f"""You are analyzing the research paper "{title}" for an MPhil/PhD student.
 
-Paper content:
+Paper summary: {summary[:500]}
+Key findings: {findings_str}
+Methodology: {methodology[:300]}
+
+Paper full text (last part):
 {context}
 
 Question: {body.question}
 
-Answer based ONLY on the paper content above. Be specific and cite evidence. If the paper doesn't contain the answer, say so."""
+Answer based ONLY on the paper content above. Be specific, cite evidence, and give detailed academic analysis. If the paper doesn't contain the answer, say so."""
     try:
         raw = ai_chat(prompt)
         return {"answer": raw, "question": body.question}
