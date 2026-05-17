@@ -23,17 +23,17 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "outputs"
 DB_PATH = BASE_DIR / "history.db"
 
-# Gemini keys
-GEMINI_KEYS = [k.strip() for k in (
-    os.environ.get("GEMINI_API_KEYS") or
-    os.environ.get("GEMINI_API_KEY") or
+# Groq keys (primary)
+GROQ_KEYS = [k.strip() for k in (
+    os.environ.get("GROQ_API_KEYS") or
+    os.environ.get("GROQ_API_KEY") or
     ""
 ).split(",") if k.strip()]
 for i in range(2, 10):
-    k = os.environ.get(f"GEMINI_API_KEY_{i}")
-    if k: GEMINI_KEYS.append(k.strip())
+    k = os.environ.get(f"GROQ_API_KEY_{i}")
+    if k: GROQ_KEYS.append(k.strip())
 
-# Grok (xAI) keys
+# Grok (xAI) keys (fallback)
 GROK_KEYS = [k.strip() for k in (
     os.environ.get("GROK_API_KEYS") or
     os.environ.get("GROK_API_KEY") or
@@ -93,14 +93,14 @@ def init_db():
             except: pass
 init_db()
 
-# ─── Multi-Provider AI Call ───
+# ─── Multi-Provider AI Call (Groq + optional Grok) ───
 PROVIDERS = []
-for k in GROK_KEYS:
-    PROVIDERS.append({"type":"grok","key":k,"model":GROK_MODEL})
 for k in GROQ_KEYS:
     PROVIDERS.append({"type":"groq","key":k,"model":GROQ_MODEL})
-for k in GEMINI_KEYS:
-    PROVIDERS.append({"type":"gemini","key":k,"model":GEMINI_MODEL})
+for k in GROK_KEYS:
+    PROVIDERS.append({"type":"grok","key":k,"model":GROK_MODEL})
+if not PROVIDERS:
+    raise RuntimeError("No API keys found. Set GROQ_API_KEY or GROK_API_KEY.")
 
 # ─── AI Chat ───
 def ai_chat(prompt: str, retry: int = 1) -> str:
@@ -109,24 +109,7 @@ def ai_chat(prompt: str, retry: int = 1) -> str:
         last_err = None
         for p in PROVIDERS:
             try:
-                if p["type"] == "gemini":
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{p['model']}:generateContent?key={p['key']}"
-                    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-                    resp = http_requests.post(url, json=payload, timeout=90)
-                    if resp.status_code == 429:
-                        last_err = f"gemini_quota"; errors[p['key'][:8]] = f"429"; continue
-                    if resp.status_code != 200:
-                        err = resp.text[:200]
-                        if "quota" in err.lower():
-                            last_err = f"gemini_quota"; errors[p['key'][:8]] = err[:80]; continue
-                        raise Exception(f"Gemini err {resp.status_code}: {err}")
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if not candidates:
-                        raise Exception("Empty Gemini response")
-                    return candidates[0].get("content",{}).get("parts",[{}])[0].get("text","")
-
-                elif p["type"] == "grok":
+                if p["type"] == "grok":
                     url = "https://api.x.ai/v1/chat/completions"
                     headers = {"Authorization": f"Bearer {p['key']}", "Content-Type": "application/json"}
                     payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096}
@@ -596,7 +579,7 @@ Provide the final merged analysis with these sections:
     return all_data
 @app.get("/health")
 def health():
-    return {"message": "AI Paper Summarizer Pro", "version": "3.1.0", "status": "running", "providers": len(PROVIDERS), "gemini_keys": len(GEMINI_KEYS), "groq_keys": len(GROQ_KEYS), "grok_keys": len(GROK_KEYS)}
+    return {"message": "AI Paper Summarizer Pro", "version": "3.1.0", "status": "running", "providers": len(PROVIDERS), "groq_keys": len(GROQ_KEYS), "grok_keys": len(GROK_KEYS)}
 
 @app.get("/debug")
 def debug():

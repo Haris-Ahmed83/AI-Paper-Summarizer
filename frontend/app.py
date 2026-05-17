@@ -153,7 +153,7 @@ def api_summarize_url(url: str, lang: str, stype: str) -> dict:
 def _fmt_err(r) -> str:
     try:
         detail = r.json().get("detail", "")
-        if detail.startswith("ALL_FAILED"):
+        if "ALL_FAILED" in detail:
             return f"❌ ALL providers failed. Details: {detail}"
         if "BLOCKED_PUBLISHER" in detail:
             return detail.replace("BLOCKED_PUBLISHER: ", "🔒 ")
@@ -232,7 +232,7 @@ with st.sidebar:
     # Provider status
     try:
         h = requests.get(f"{API_URL}/health", timeout=3).json()
-        st.caption(f"⚡ {h.get('providers','?')} providers · {h.get('gemini_keys','?')} Gemini · {h.get('groq_keys','?')} Groq")
+        st.caption(f"⚡ {h.get('providers','?')} providers · {h.get('groq_keys','?')} Groq · {h.get('grok_keys','?')} Grok")
     except:
         st.caption("⚡ connecting...")
 
