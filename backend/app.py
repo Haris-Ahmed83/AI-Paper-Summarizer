@@ -115,10 +115,17 @@ if not PROVIDERS:
 # Provider health tracking
 _DEAD_PROVIDERS = set()  # keys that returned 403 (permanently invalid)
 _COOLDOWN = {}            # keys that returned 429, with timestamp
+_LAST_CALL_TIME = 0.0     # rate limiter
 
 # ─── AI Chat (REST-based, multi-provider) with exponential backoff ───
 def ai_chat(prompt: str, retry: int = 2, system_prompt: str = "", temperature: float = 0.3, max_tokens: int = 4096) -> str:
     import time, random
+    global _LAST_CALL_TIME
+    # Rate limiter: min 2s between calls
+    elapsed = time.time() - _LAST_CALL_TIME
+    if elapsed < 2:
+        time.sleep(2 - elapsed)
+    _LAST_CALL_TIME = time.time()
     errors = {}
     wait_times = [15, 30, 60]
     for attempt in range(retry + 1):

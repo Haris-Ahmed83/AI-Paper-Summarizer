@@ -154,7 +154,12 @@ def _fmt_err(r) -> str:
     try:
         detail = r.json().get("detail", "")
         if "ALL_FAILED" in detail:
-            return f"❌ ALL providers failed. Details: {detail}"
+            return f"""❌ All AI providers temporarily unavailable.
+
+**Options:**
+- ⏳ Wait 30 seconds and try again
+- 📄 Try a smaller PDF (under 10 pages)
+- 🔄 Refresh page and retry"""
         if "BLOCKED_PUBLISHER" in detail:
             return detail.replace("BLOCKED_PUBLISHER: ", "🔒 ")
         if "403" in detail or "forbidden" in detail.lower():
@@ -309,8 +314,11 @@ with tab1:
             </div>""", unsafe_allow_html=True)
 
             if st.button("🚀 Generate Summary", type="primary", use_container_width=True):
-                with st.spinner("🤖 AI is analyzing the paper..."):
-                    result = api_summarize(uploaded, lang, stype)
+                status = st.status("🤖 Initializing AI analysis...", expanded=False)
+                status.write("📄 Extracting text from PDF...")
+                result = api_summarize(uploaded, lang, stype)
+                status.update(label="✅ Analysis complete!" if "error" not in result else "❌ Analysis failed", state="complete")
+                status.write("")
 
                 if "error" in result:
                     st.error(f"❌ {result['error']}")
@@ -331,8 +339,11 @@ with tab1:
             </div>""", unsafe_allow_html=True)
 
             if st.button("🚀 Fetch & Summarize", type="primary", use_container_width=True):
-                with st.spinner("🌐 Fetching URL..."):
-                    result = api_summarize_url(url, lang, stype)
+                status = st.status("🌐 Fetching URL...", expanded=False)
+                status.write("🤖 AI is analyzing...")
+                result = api_summarize_url(url, lang, stype)
+                status.update(label="✅ Analysis complete!" if "error" not in result else "❌ Analysis failed", state="complete")
+                status.write("")
 
                 if "error" in result:
                     st.error(f"❌ {result['error']}")
