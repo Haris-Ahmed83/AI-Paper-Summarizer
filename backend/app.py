@@ -628,8 +628,9 @@ def generate_summary(text: str, lang: str = "english", stype: str = "detailed") 
     }
     depth = type_map.get(stype, "detailed academic analysis")
 
+    MAX_CHARS = 6000
     words = text.split()
-    corpus = " ".join(words[:1800])
+    corpus = " ".join(words[:1000])[:MAX_CHARS]
 
     # Quick regex title for prompt context (AI will verify/correct it)
     title = extract_title(text)
