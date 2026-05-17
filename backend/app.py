@@ -215,10 +215,13 @@ def extract_text_pdf(path: str) -> str:
         raise Exception(f"PDF extraction failed: {e}")
 
 def _clean_extracted_text(text: str) -> str:
-    # Fix missing spaces between camelCase words (PDF artifact)
-    text = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', text)
+    # Fix missing spaces between mixed-case words (PDF artifact)
+    text = re.sub(r'(?<=[a-z])(?=[A-Z][a-z])', ' ', text)
     text = re.sub(r'(?<=[a-z])(?=\d)', ' ', text)
     text = re.sub(r'(?<=\d)(?=[A-Z])', ' ', text)
+    text = re.sub(r'(?<=[a-z])([A-Z]{2,})', r' \1', text)
+    # Fix ordinal suffixes merged with words: "21stCentury" → "21st Century"
+    text = re.sub(r'(?<=\d)(st|nd|rd|th)(?=[A-Z])', r'\1 ', text)
     return text
 
 def extract_text_txt(path: str) -> str:
@@ -248,7 +251,6 @@ def extract_citations(text: str) -> list:
         disclaimer_keywords = ("disclaimer", "publisher", "©", "conflict", "funding", "institutional review", "data availability")
         for l in lines[ref_start+1:]:
             stripped = l.strip()
-            # Stop at disclaimer/legal text
             if any(stripped.lower().startswith(k) for k in disclaimer_keywords):
                 if current.strip(): refs.append(current.strip())
                 break
@@ -256,23 +258,26 @@ def extract_citations(text: str) -> list:
                 if current.strip(): refs.append(current.strip())
                 current = ""
                 continue
-            # New numbered reference
-            if re.match(r'^\[\d+\]', stripped):
+            # New numbered reference: [1] or 1. format
+            if re.match(r'^\[\d+\]', stripped) or re.match(r'^\d+\.\s', stripped):
                 if current.strip(): refs.append(current.strip())
-                current = stripped
+                current = re.sub(r'^\[\d+\]\s*|^\d+\.\s*', '', stripped)
             else:
+                # Continuation of current reference
                 current += " " + stripped
         if current.strip(): refs.append(current.strip())
-        # Deduplicate + clean
+        # Deduplicate + clean each ref
         seen = set()
         clean = []
         for r in refs:
             r = re.sub(r'\s+', ' ', r).strip()
-            if re.match(r'^\[\d+\]$', r): continue
             norm = re.sub(r'\s+', '', r.lower().strip("[] "))
             if norm in seen: continue
             seen.add(norm)
             if len(r) > 30 and re.search(r'\d{4}', r):
+                # Fix common merged words in ref text
+                r = re.sub(r'(?<=[a-z])and(?=[A-Z])', r' and ', r)
+                r = re.sub(r'(?<=[a-z])(the|for|are|from|with|this|that)(?=[A-Z])', r' \1 ', r)
                 # Strip raw URLs from body, link DOIs separately
                 raw_doi = ""
                 doi_m = re.search(r'(https?://doi\.org/\S+)', r)
