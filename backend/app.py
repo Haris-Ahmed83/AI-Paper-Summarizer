@@ -219,6 +219,9 @@ def ai_chat(prompt: str, retry: int = 2, system_prompt: str = "", temperature: f
             raise Exception(f"ALL_FAILED: {err_msg}")
 
 # ─── Models ───
+# ══════════════════════════════════════════════════════════════════════
+# Pydantic Models
+# ══════════════════════════════════════════════════════════════════════
 class SummaryResponse(BaseModel):
     id: str; filename: str; filesize: int; filetype: str
     title: str; summary: str; methodology: str = ""
@@ -240,6 +243,9 @@ class HistoryItem(BaseModel):
     source_url: str = ""
 
 # ─── PDF Processing ───
+# ══════════════════════════════════════════════════════════════════════
+# PDF Processing
+# ══════════════════════════════════════════════════════════════════════
 def extract_text_pdf(path: str) -> str:
     text = ""
     try:
@@ -310,6 +316,9 @@ def extract_text(path: str, ftype: str) -> str:
     elif ftype == "txt": return extract_text_txt(path)
     raise ValueError(f"Unsupported file type: {ftype}")
 
+# ══════════════════════════════════════════════════════════════════════
+# Text Processing: Chunking, Citations, URL Fetching
+# ══════════════════════════════════════════════════════════════════════
 def chunk_text(text: str, size: int = CHUNK_SIZE) -> list:
     words = text.split()
     return [" ".join(words[i:i+size]) for i in range(0, len(words), size)]
@@ -474,6 +483,9 @@ def extract_title_via_ai(text: str) -> str:
             pass
     return "Research Paper"
 
+# ══════════════════════════════════════════════════════════════════════
+# URL Fetching
+# ══════════════════════════════════════════════════════════════════════
 def fetch_url_text(url: str) -> str:
     blocked_domains = ["mdpi.com", "elsevier.com", "sciencedirect.com", "springer.com", "tandfonline.com", "wiley.com", "ieee.org", "acm.org", "nature.com"]
     for d in blocked_domains:
@@ -725,6 +737,10 @@ PAPER TEXT:
     data["practical_implications"] = data.get("practical_implications", "")
     data["key_takeaways"] = data.get("key_takeaways", [])
     return data
+
+# ══════════════════════════════════════════════════════════════════════
+# API Routes
+# ══════════════════════════════════════════════════════════════════════
 @app.get("/health")
 def health():
     return {"message": "AI Paper Summarizer Pro", "version": "3.1.0", "status": "running", "providers": len(PROVIDERS), "groq_keys": len(GROQ_KEYS), "grok_keys": len(GROK_KEYS), "gemini_keys": len(GEMINI_KEYS)}

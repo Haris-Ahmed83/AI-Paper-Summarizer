@@ -14,10 +14,10 @@ class HistoryScreen extends StatefulWidget {
   });
 
   @override
-  State<HistoryScreen> createState() => _HistoryScreenState();
+  State<HistoryScreen> createState() => HistoryScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> {
+class HistoryScreenState extends State<HistoryScreen> {
   List<HistoryItem> _items = [];
   bool _loading = true;
 
@@ -26,6 +26,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     super.initState();
     _load();
   }
+
+  Future<void> refresh() => _load();
 
   Future<void> _load() async {
     setState(() => _loading = true);

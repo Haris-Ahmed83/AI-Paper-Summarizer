@@ -1,13 +1,22 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/summary.dart';
 
 class ApiService {
-  static String baseUrl = 'http://localhost:8000';
+  static String _baseUrl = 'http://localhost:8000';
 
-  static void setBaseUrl(String url) {
-    baseUrl = url;
+  static Future<String> getBaseUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    _baseUrl = prefs.getString('server_url') ?? 'http://localhost:8000';
+    return _baseUrl;
+  }
+
+  static Future<void> setBaseUrl(String url) async {
+    _baseUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('server_url', _baseUrl);
   }
 
   static Future<Summary> summarize({
@@ -15,7 +24,8 @@ class ApiService {
     required String language,
     required String summaryType,
   }) async {
-    final uri = Uri.parse('$baseUrl/summarize');
+    await getBaseUrl();
+    final uri = Uri.parse('$_baseUrl/summarize');
     final request = http.MultipartRequest('POST', uri);
 
     request.fields['language'] = language;
@@ -33,7 +43,7 @@ class ApiService {
       ));
     }
 
-    final streamed = await request.send();
+    final streamed = await request.send().timeout(const Duration(seconds: 180));
     final response = await http.Response.fromStream(streamed);
 
     if (response.statusCode == 200) {
@@ -51,16 +61,19 @@ class ApiService {
     required String language,
     required String summaryType,
   }) async {
-    final uri = Uri.parse('$baseUrl/summarize-url');
-    final response = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'url': url,
-        'language': language,
-        'summary_type': summaryType,
-      }),
-    );
+    await getBaseUrl();
+    final uri = Uri.parse('$_baseUrl/summarize-url');
+    final response = await http
+        .post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'url': url,
+            'language': language,
+            'summary_type': summaryType,
+          }),
+        )
+        .timeout(const Duration(seconds: 180));
 
     if (response.statusCode == 200) {
       final json = jsonDecode(response.body) as Map<String, dynamic>;
@@ -73,9 +86,10 @@ class ApiService {
   }
 
   static Future<List<HistoryItem>> getHistory() async {
+    await getBaseUrl();
     try {
-      final uri = Uri.parse('$baseUrl/history');
-      final response = await http.get(uri);
+      final uri = Uri.parse('$_baseUrl/history');
+      final response = await http.get(uri).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final list = jsonDecode(response.body) as List;
         return list.map((e) => HistoryItem.fromJson(e as Map<String, dynamic>)).toList();
@@ -85,9 +99,10 @@ class ApiService {
   }
 
   static Future<Summary?> getSummary(String id) async {
+    await getBaseUrl();
     try {
-      final uri = Uri.parse('$baseUrl/summary/$id');
-      final response = await http.get(uri);
+      final uri = Uri.parse('$_baseUrl/summary/$id');
+      final response = await http.get(uri).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         return Summary.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
       }
@@ -96,9 +111,10 @@ class ApiService {
   }
 
   static Future<bool> deleteSummary(String id) async {
+    await getBaseUrl();
     try {
-      final uri = Uri.parse('$baseUrl/summary/$id');
-      final response = await http.delete(uri);
+      final uri = Uri.parse('$_baseUrl/summary/$id');
+      final response = await http.delete(uri).timeout(const Duration(seconds: 10));
       return response.statusCode == 200;
     } catch (_) {
       return false;
@@ -106,9 +122,10 @@ class ApiService {
   }
 
   static Future<String?> exportSummary(String id, {String fmt = 'txt'}) async {
+    await getBaseUrl();
     try {
-      final uri = Uri.parse('$baseUrl/export/$id?fmt=$fmt');
-      final response = await http.get(uri);
+      final uri = Uri.parse('$_baseUrl/export/$id?fmt=$fmt');
+      final response = await http.get(uri).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         return response.body;
       }

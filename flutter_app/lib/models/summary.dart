@@ -5,8 +5,21 @@ class Summary {
   final String filetype;
   final String title;
   final String summary;
+  final String methodology;
+  final List<String> keyFindings;
+  final List<String> researchGaps;
+  final List<String> futureDirections;
+  final List<String> strengths;
+  final List<String> weaknesses;
+  final String conclusion;
+  final String difficultyLevel;
+  final List<String> keyTerms;
   final List<String> keyPoints;
   final List<String> citations;
+  final String researchObjective;
+  final String novelty;
+  final String practicalImplications;
+  final List<String> keyTakeaways;
   final String language;
   final String summaryType;
   final int wordCount;
@@ -21,8 +34,21 @@ class Summary {
     required this.filetype,
     required this.title,
     required this.summary,
-    required this.keyPoints,
-    required this.citations,
+    this.methodology = '',
+    this.keyFindings = const [],
+    this.researchGaps = const [],
+    this.futureDirections = const [],
+    this.strengths = const [],
+    this.weaknesses = const [],
+    this.conclusion = '',
+    this.difficultyLevel = 'Intermediate',
+    this.keyTerms = const [],
+    this.keyPoints = const [],
+    this.citations = const [],
+    this.researchObjective = '',
+    this.novelty = '',
+    this.practicalImplications = '',
+    this.keyTakeaways = const [],
     required this.language,
     required this.summaryType,
     required this.wordCount,
@@ -39,8 +65,21 @@ class Summary {
       filetype: json['filetype'] as String? ?? '',
       title: json['title'] as String? ?? 'Untitled',
       summary: json['summary'] as String? ?? '',
-      keyPoints: List<String>.from(json['key_points'] as List? ?? []),
-      citations: List<String>.from(json['citations'] as List? ?? []),
+      methodology: json['methodology'] as String? ?? '',
+      keyFindings: _toStrList(json['key_findings']),
+      researchGaps: _toStrList(json['research_gaps']),
+      futureDirections: _toStrList(json['future_directions']),
+      strengths: _toStrList(json['strengths']),
+      weaknesses: _toStrList(json['weaknesses']),
+      conclusion: json['conclusion'] as String? ?? '',
+      difficultyLevel: json['difficulty_level'] as String? ?? 'Intermediate',
+      keyTerms: _toStrList(json['key_terms']),
+      keyPoints: _toStrList(json['key_points']),
+      citations: _toStrList(json['citations']),
+      researchObjective: json['research_objective'] as String? ?? '',
+      novelty: json['novelty'] as String? ?? '',
+      practicalImplications: json['practical_implications'] as String? ?? '',
+      keyTakeaways: _toStrList(json['key_takeaways']),
       language: json['language'] as String? ?? 'english',
       summaryType: json['summary_type'] as String? ?? 'detailed',
       wordCount: json['word_count'] as int? ?? 0,
@@ -50,6 +89,12 @@ class Summary {
     );
   }
 
+  static List<String> _toStrList(dynamic v) {
+    if (v == null) return [];
+    if (v is List) return v.map((e) => e.toString()).toList();
+    return [];
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'filename': filename,
@@ -57,8 +102,21 @@ class Summary {
         'filetype': filetype,
         'title': title,
         'summary': summary,
+        'methodology': methodology,
+        'key_findings': keyFindings,
+        'research_gaps': researchGaps,
+        'future_directions': futureDirections,
+        'strengths': strengths,
+        'weaknesses': weaknesses,
+        'conclusion': conclusion,
+        'difficulty_level': difficultyLevel,
+        'key_terms': keyTerms,
         'key_points': keyPoints,
         'citations': citations,
+        'research_objective': researchObjective,
+        'novelty': novelty,
+        'practical_implications': practicalImplications,
+        'key_takeaways': keyTakeaways,
         'language': language,
         'summary_type': summaryType,
         'word_count': wordCount,
