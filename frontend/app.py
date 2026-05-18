@@ -153,22 +153,122 @@ def api_summarize_url(url: str, lang: str, stype: str) -> dict:
 def _fmt_err(r) -> str:
     try:
         detail = r.json().get("detail", "")
-        if "ALL_FAILED" in detail:
-            return f"""❌ All AI providers temporarily unavailable.
-
-**Options:**
-- ⏳ Wait 30 seconds and try again
-- 📄 Try a smaller PDF (under 10 pages)
-- 🔄 Refresh page and retry"""
-        if "BLOCKED_PUBLISHER" in detail:
-            return detail.replace("BLOCKED_PUBLISHER: ", "🔒 ")
-        if "403" in detail or "forbidden" in detail.lower():
-            return "🔒 This publisher blocks automated access. Try ArXiv/PubMed URLs or upload PDF directly."
-        if "429" in detail or "quota" in detail.lower() or "rate limit" in detail.lower():
-            return "⏳ API limit reached. All providers are out of quota. Try again in 15-30 minutes."
-        return detail or f"HTTP {r.status_code}"
+        return _fmt_detail(detail) or detail or f"HTTP {r.status_code}"
     except:
-        return f"HTTP {r.status_code}"
+        return f"Server error (HTTP {r.status_code})"
+
+def _fmt_detail(detail: str) -> str | None:
+    """Return human-readable error with cause + solution, or None to fall through."""
+    if not detail:
+        return None
+
+    m = None  # matched info
+
+    if "ALL_FAILED" in detail:
+        m = ("All AI providers exhausted", [
+            "All API keys hit rate/ quota limits simultaneously",
+            "Temporary server load — retry after 30s",
+            "Your PDF may be too long for the AI context window"
+        ], [
+            "⏳ Wait 30 seconds and try again",
+            "📄 Try a shorter paper (under 10 pages)",
+            "🔄 Refresh page and click Summarize again",
+            "🔑 Add more API keys in environment (Groq / Gemini)"
+        ])
+    elif "BLOCKED_PUBLISHER" in detail or "403" in detail or "forbidden" in detail.lower():
+        m = ("Publisher blocks automated access", [
+            "MDPI, Elsevier, Springer, etc. block bot access",
+            "The website detected automated fetching"
+        ], [
+            "📥 Download the PDF and upload it directly",
+            "🔗 Use ArXiv or PubMed URLs instead",
+            "📄 Most publisher PDFs work when uploaded as file"
+        ])
+    elif "429" in detail or "quota" in detail.lower() or "rate limit" in detail.lower():
+        m = ("AI API limit reached", [
+            "All providers have exhausted their rate/quotas",
+            "Free-tier limits: ~30 req/min (Groq), ~60 req/min (Gemini)"
+        ], [
+            "⏳ Wait 2-3 minutes and try again",
+            "🔄 Switch to a different network / VPN",
+            "🔑 Add more API keys in .env file"
+        ])
+    elif "413" in detail or "too large" in detail.lower():
+        m = ("File too large for AI processing", [
+            "The paper exceeds the model's context window (~6000 tokens)",
+            "Very long PDFs with dense text trigger this"
+        ], [
+            "📄 Upload only the first 8-10 pages (split PDF)",
+            "📝 Use a shorter paper",
+            "⚙️ Try 'Brief' summary type instead of 'Detailed'"
+        ])
+    elif "Model error" in detail or "MODEL" in detail:
+        m = ("AI model unavailable", [
+            "The model may be overloaded or temporarily down",
+            "API provider might have changed model availability"
+        ], [
+            "🔄 Try again in a few minutes",
+            "📧 Contact support if error persists"
+        ])
+    elif "PDF extraction failed" in detail or "Extraction failed" in detail:
+        m = ("Could not read PDF text", [
+            "PDF may be scanned (image-based, no text layer)",
+            "PDF may be corrupted or password-protected",
+            "File may not actually be a valid PDF"
+        ], [
+            "📄 Try a different PDF (searchable text format)",
+            "📸 Scanned PDFs need OCR — not supported yet",
+            "🔗 Try fetching from ArXiv URL instead"
+        ])
+    elif "Very little text" in detail:
+        m = ("PDF has almost no readable text", [
+            "The PDF appears to be scanned images, not text",
+            "PDF may contain only figures/charts without text"
+        ], [
+            "📄 Use a text-based PDF (not scanned)",
+            "🔗 Find the paper on ArXiv and use URL mode"
+        ])
+    elif "Failed to fetch URL" in detail or "Failed to fetch" in detail:
+        m = ("Could not download from URL", [
+            "Website may block automated access",
+            "URL may be invalid or unreachable",
+            "The page may require login/subscription"
+        ], [
+            "🔗 Verify the URL is correct",
+            "📥 Download the paper and upload the PDF",
+            "🌐 Try ArXiv abstract page URL instead"
+        ])
+    elif "No readable content" in detail:
+        m = ("Website has no readable text", [
+            "Page may be JavaScript-heavy (no static content)",
+            "URL may point to a video / image / non-text page"
+        ], [
+            "🔗 Try the ArXiv abstract page URL instead",
+            "📥 Download PDF and upload directly"
+        ])
+    elif "Connection failed" in detail or "Connection" in detail:
+        m = ("Cannot reach the server", [
+            "Backend service may be restarting / building",
+            "Hugging Face may have paused the free instance",
+            "Your internet connection may be unstable"
+        ], [
+            "⏳ Wait 2-3 minutes (HF free tier sleeps after inactivity)",
+            "🔄 Refresh the page and try again"
+        ])
+
+    if m:
+        title, causes, solutions = m
+        lines = [f"**⚠️ {title}**", ""]
+        lines.append("**Why:**")
+        for c in causes:
+            lines.append(f"- {c}")
+        lines.append("")
+        lines.append("**Try:**")
+        for s in solutions:
+            lines.append(f"- {s}")
+        return "\n".join(lines)
+
+    return None
 
 def api_history():
     st.session_state.history = _cached_history()
