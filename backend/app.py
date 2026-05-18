@@ -95,9 +95,23 @@ def init_db():
             except: pass
 init_db()
 
-# ─── Multi-Provider AI Call (Groq + optional Grok) ───
+# ─── Multi-Provider AI Call ───
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct")
+
 PROVIDERS = []
 GROQ_CLIENTS = []
+
+# Ollama (local/self-hosted — highest priority when available)
+_ollama_ok = False
+try:
+    r = http_requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=3)
+    if r.status_code == 200:
+        PROVIDERS.append({"type":"ollama","key":"local","model":OLLAMA_MODEL, "base_url": OLLAMA_BASE_URL})
+        _ollama_ok = True
+except Exception:
+    pass
+
 for k in GROQ_KEYS:
     PROVIDERS.append({"type":"groq","key":k,"model":GROQ_MODEL})
     try:
@@ -137,11 +151,27 @@ def ai_chat(prompt: str, retry: int = 2, system_prompt: str = "", temperature: f
             now = time.time()
             if kid in _COOLDOWN:
                 provider_type = p["type"]
-                wait = {"groq": 300, "grok": 120, "gemini": 60}.get(provider_type, 120)
+                wait = {"groq": 300, "grok": 120, "gemini": 60, "ollama": 5}.get(provider_type, 120)
                 if now - _COOLDOWN[kid] < wait:
                     continue
             try:
-                if p["type"] == "grok":
+                if p["type"] == "ollama":
+                    url = f"{p['base_url']}/v1/chat/completions"
+                    msgs = []
+                    if system_prompt:
+                        msgs.append({"role": "system", "content": system_prompt})
+                    msgs.append({"role": "user", "content": prompt})
+                    payload = {"model": p["model"], "messages": msgs, "max_tokens": max_tokens, "temperature": temperature, "stream": False}
+                    resp = http_requests.post(url, json=payload, timeout=180)
+                    if resp.status_code != 200:
+                        err = resp.text[:200]; raise Exception(f"Ollama err {resp.status_code}: {err}")
+                    data = resp.json()
+                    choices = data.get("choices", [])
+                    if not choices:
+                        raise Exception("Empty Ollama response")
+                    return choices[0].get("message",{}).get("content","")
+
+                elif p["type"] == "grok":
                     url = "https://api.x.ai/v1/chat/completions"
                     headers = {"Authorization": f"Bearer {p['key']}", "Content-Type": "application/json"}
                     msgs = []
@@ -751,6 +781,9 @@ def debug():
         "total_providers": len(PROVIDERS),
         "grok_keys": len(GROK_KEYS),
         "groq_keys": len(GROQ_KEYS),
+        "ollama_available": _ollama_ok,
+        "ollama_base_url": OLLAMA_BASE_URL,
+        "ollama_model": OLLAMA_MODEL,
         "provider_list": [f"{p['type']}_{i}" for i, p in enumerate(PROVIDERS)],
     }
 
