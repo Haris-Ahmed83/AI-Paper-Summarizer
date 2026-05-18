@@ -53,8 +53,8 @@ for i in range(2, 10):
     k = os.environ.get(f"GEMINI_API_KEY_{i}")
     if k: GEMINI_KEYS.append(k.strip())
 
-if not GROQ_KEYS and not GROK_KEYS:
-    raise RuntimeError("At least one API key required: GROQ_API_KEY or GROK_API_KEY")
+if not GROQ_KEYS and not GROK_KEYS and not GEMINI_KEYS:
+    pass  # Ollama-only mode — will be checked after provider setup
 
 GROK_MODEL = os.environ.get("GROK_MODEL", "grok-3-mini")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
@@ -124,7 +124,10 @@ for k in GROK_KEYS:
 for k in GEMINI_KEYS:
     PROVIDERS.append({"type":"gemini","key":k,"model":"gemini-1.5-flash"})
 if not PROVIDERS:
-    raise RuntimeError("No API keys found. Set GROQ_API_KEY, GEMINI_API_KEY, or GROK_API_KEY.")
+    if _ollama_ok:
+        pass  # Ollama alone is enough
+    else:
+        raise RuntimeError("No API keys found. Set GROQ_API_KEY, GEMINI_API_KEY, or GROK_API_KEY.")
 
 # Provider health tracking
 _DEAD_PROVIDERS = set()  # keys that returned 403 (permanently invalid)
