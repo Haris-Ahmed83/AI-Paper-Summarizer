@@ -463,28 +463,29 @@ with tab1:
 def show_paper(s, show_chat=True):
     lang_label = {"english":"🇬🇧 English","urdu":"🇵🇰 Urdu","both":"🌐 Both"}
     type_label = {"detailed":"In-Depth Research","brief":"Quick Overview","bullet":"Key Points Only"}
-    size_str = f"{s['filesize']/1024:.0f}KB" if s['filesize']<1024*1024 else f"{s['filesize']/(1024*1024):.1f}MB"
+    fs = s.get("filesize", 0)
+    size_str = f"{fs/1024:.0f}KB" if fs < 1024*1024 else f"{fs/(1024*1024):.1f}MB"
     diff = s.get("difficulty_level", "Intermediate")
     diff_cls = {"Beginner":"diff-easy","Intermediate":"diff-medium","Advanced":"diff-hard"}.get(diff, "diff-medium")
 
     st.markdown(f"""
     <div class="card">
-        <h1 style="font-size:1.7rem;font-weight:700;line-height:1.3;word-wrap:break-word;white-space:normal;overflow:visible;margin:0 0 8px;">{s['title']}</h1>
+        <h1 style="font-size:1.7rem;font-weight:700;line-height:1.3;word-wrap:break-word;white-space:normal;overflow:visible;margin:0 0 8px;">{s.get('title','Untitled')}</h1>
         <p class="meta">
-            <span class="badge">{lang_label.get(s['language'],s['language'])}</span>
-            <span class="badge">{type_label.get(s['summary_type'],s['summary_type'])}</span>
-            <span class="badge">{s['filetype']}</span>
+            <span class="badge">{lang_label.get(s.get('language',''),s.get('language',''))}</span>
+            <span class="badge">{type_label.get(s.get('summary_type',''),s.get('summary_type',''))}</span>
+            <span class="badge">{s.get('filetype','')}</span>
             <span class="badge">{size_str}</span>
-            <span class="badge">📝 {s['word_count']} words</span>
-            <span class="badge">⚡ {s['processing_time']}s</span>
+            <span class="badge">📝 {s.get('word_count','?')} words</span>
+            <span class="badge">⚡ {s.get('processing_time','?')}s</span>
             <span class="diff-badge {diff_cls}">{diff}</span>
         </p>
         {_src_link(s) if s.get('source_url') else ''}
     </div>""", unsafe_allow_html=True)
 
     st.markdown("<div class='section-heading'><span class='icon'>📝</span> Summary</div>", unsafe_allow_html=True)
-    cls = "urdu" if s["language"] == "urdu" else ""
-    st.markdown(f'<div class="card {cls}">{s["summary"]}</div>', unsafe_allow_html=True)
+    cls = "urdu" if s.get("language") == "urdu" else ""
+    st.markdown(f'<div class="card {cls}">{s.get("summary","")}</div>', unsafe_allow_html=True)
 
     if s.get("key_takeaways"):
         st.markdown("<div class='section-heading'><span class='icon'>🎯</span> Key Takeaways</div>", unsafe_allow_html=True)
