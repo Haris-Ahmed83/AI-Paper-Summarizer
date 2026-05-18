@@ -271,6 +271,7 @@ def _fmt_detail(detail: str) -> str | None:
     return None
 
 def api_history():
+    _cached_history.clear()
     st.session_state.history = _cached_history()
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -700,7 +701,7 @@ with tab5:
     st.markdown('<div class="section-heading"><span class="icon">📝</span> Thesis Proposal Generator</div>', unsafe_allow_html=True)
     st.markdown("Select a previously summarized paper to generate a thesis proposal from its research gaps.")
     if st.session_state.history:
-        opts = {f"{h['title'][:60]}... ({h['date'][:10] if h.get('date') else ''})": h["id"] for h in st.session_state.history}
+        opts = {f"{h['title'][:60]}... ({h['created_at'][:10] if h.get('created_at') else ''})": h["id"] for h in st.session_state.history}
         sel_prop = st.selectbox("Choose a paper", list(opts.keys()), key="prop_sel")
         if st.button("🎯 Generate Proposal", use_container_width=True):
             with st.spinner("Generating thesis proposal..."):
